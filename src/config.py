@@ -1,4 +1,5 @@
 """Central configuration and visual tokens for IDR-GE."""
+import os
 from pathlib import Path
 from typing import Dict, Any
 
@@ -17,6 +18,13 @@ if not DATA_PROCESSED_DIR.exists() and (PROJECT_ROOT / "data" / "processed").exi
     DATA_PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
 
 DATA_PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+
+# Symlink lowercase data to Data if running on Linux to prevent any case mismatch
+if (PROJECT_ROOT / "Data").exists() and not (PROJECT_ROOT / "data").exists():
+    try:
+        os.symlink(PROJECT_ROOT / "Data", PROJECT_ROOT / "data")
+    except Exception:
+        pass
 
 # Processed file paths strictly matching repository casing
 GEOJSON_FILE = DATA_PROCESSED_DIR / "indonesia_regencies.geojson"

@@ -1,5 +1,6 @@
 """API routes and endpoints for IDR-GE spatial analytics service."""
 import json
+from pathlib import Path
 from functools import lru_cache
 from typing import Any, Dict, List, Optional
 import geopandas as gpd
@@ -212,42 +213,42 @@ class DataManager:
         self._raw_geojson: Optional[Dict[str, Any]] = None
         self._bivariate_df: Optional[pd.DataFrame] = None
 
+    @staticmethod
+    def _resolve_data_file(filename: str, preferred_path: Path) -> Path:
+        """Resolve processed dataset file with multi-tier candidate search and rglob fallback."""
+        if preferred_path.exists():
+            return preferred_path
+
+        root = Path(__file__).resolve().parent.parent.parent
+        candidates = [
+            root / "Data" / "processed" / filename,
+            root / "data" / "processed" / filename,
+            root / "Data" / filename,
+            root / "data" / filename,
+            Path("Data/processed") / filename,
+            Path("data/processed") / filename,
+            Path.cwd() / "Data" / "processed" / filename,
+            Path.cwd() / "data" / "processed" / filename,
+        ]
+        for cand in candidates:
+            if cand.resolve().exists():
+                return cand.resolve()
+
+        for p in root.rglob(filename):
+            if p.is_file():
+                return p.resolve()
+
+        raise FileNotFoundError(
+            f"Required data asset '{filename}' was not found. Searched root: {root}, preferred: {preferred_path}"
+        )
+
     def load(self) -> None:
         """Load and cache spatial datasets."""
         if self._gdf is not None:
             return
 
-        geojson_path = GEOJSON_FILE
-        parquet_path = PARQUET_FILE
-
-        if not geojson_path.exists():
-            candidates = [
-                Path(__file__).resolve().parent.parent.parent / "Data" / "processed" / "indonesia_regencies.geojson",
-                Path(__file__).resolve().parent.parent.parent / "data" / "processed" / "indonesia_regencies.geojson",
-                Path("Data/processed/indonesia_regencies.geojson").resolve(),
-                Path("data/processed/indonesia_regencies.geojson").resolve(),
-            ]
-            for cand in candidates:
-                if cand.exists():
-                    geojson_path = cand
-                    break
-
-        if not parquet_path.exists():
-            candidates = [
-                Path(__file__).resolve().parent.parent.parent / "Data" / "processed" / "podes_irbi_clean.parquet",
-                Path(__file__).resolve().parent.parent.parent / "data" / "processed" / "podes_irbi_clean.parquet",
-                Path("Data/processed/podes_irbi_clean.parquet").resolve(),
-                Path("data/processed/podes_irbi_clean.parquet").resolve(),
-            ]
-            for cand in candidates:
-                if cand.exists():
-                    parquet_path = cand
-                    break
-
-        if not geojson_path.exists():
-            raise FileNotFoundError(f"GeoJSON file not found at {geojson_path}")
-        if not parquet_path.exists():
-            raise FileNotFoundError(f"Parquet dataset not found at {parquet_path}")
+        geojson_path = self._resolve_data_file("indonesia_regencies.geojson", GEOJSON_FILE)
+        parquet_path = self._resolve_data_file("podes_irbi_clean.parquet", PARQUET_FILE)
 
         # Load GeoJSON geometry and base metadata
         with open(geojson_path, "r", encoding="utf-8") as f:
