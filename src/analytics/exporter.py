@@ -420,6 +420,76 @@ def _normalize_spatial_context(spatial_input: Optional[Union[Dict[str, Any], Spi
     }
 
 
+def _build_radar_chart_figure(p_data: Dict[str, Any], is_id: bool = True) -> Any:
+    """Construct Plotly polar radar chart comparing district to national and corridor medians."""
+    import plotly.graph_objects as go
+
+    inds = ["EWS", "RAMBU", "PERKAP", "RAWAT_SUNGAI", "GOTONG_ROYONG", "SINYAL_BURUK", "IPM"]
+    raw_inds = p_data.get("indicators", {})
+    kab_kota = p_data.get("kab_kota", "District")
+    corridor = p_data.get("corridor", "National")
+
+    district_vals, corr_medians, nat_medians = [], [], []
+    for k in inds:
+        m = _extract_metric_info(raw_inds.get(k))
+        district_vals.append(m["value"])
+        corr_medians.append(m["corridor_median"])
+        nat_medians.append(m["national_median"])
+
+    # Close polar loop
+    theta_labels = inds + [inds[0]]
+    d_v = district_vals + [district_vals[0]]
+    c_m = corr_medians + [corr_medians[0]]
+    n_m = nat_medians + [nat_medians[0]]
+
+    fig = go.Figure()
+    fig.add_trace(go.Scatterpolar(
+        r=d_v, theta=theta_labels, fill="toself", name=kab_kota,
+        line=dict(color="#0284c7", width=2.5), fillcolor="rgba(2, 132, 199, 0.20)",
+    ))
+    fig.add_trace(go.Scatterpolar(
+        r=c_m, theta=theta_labels, fill="toself",
+        name=f"Median Koridor ({corridor})" if is_id else f"{corridor} Median",
+        line=dict(color="#f59e0b", width=1.8, dash="dot"), fillcolor="rgba(245, 158, 11, 0.05)",
+    ))
+    fig.add_trace(go.Scatterpolar(
+        r=n_m, theta=theta_labels, fill="toself",
+        name="Median Nasional" if is_id else "National Median",
+        line=dict(color="#64748b", width=1.5, dash="dash"), fillcolor="rgba(100, 116, 139, 0.05)",
+    ))
+    fig.update_layout(
+        paper_bgcolor="#ffffff", plot_bgcolor="#ffffff",
+        font=dict(color="#0f172a", family="Helvetica, Arial, sans-serif"),
+        polar=dict(
+            bgcolor="#ffffff",
+            radialaxis=dict(
+                visible=True,
+                range=[0, 100],
+                gridcolor="#e2e8f0",
+                linecolor="#cbd5e1",
+                tickfont=dict(color="#64748b", size=7),
+            ),
+            angularaxis=dict(
+                gridcolor="#e2e8f0",
+                linecolor="#0f172a",
+                tickfont=dict(color="#0f172a", size=7.5),
+            ),
+        ),
+        legend=dict(
+            orientation="h",
+            yanchor="bottom",
+            y=-0.22,
+            xanchor="center",
+            x=0.5,
+            font=dict(color="#334155", size=8),
+            bgcolor="rgba(0,0,0,0)",
+        ),
+        margin=dict(l=15, r=15, t=10, b=10),
+        showlegend=True,
+    )
+    return fig
+
+
 def generate_district_policy_brief_pdf(
     profile_data: Union[RegencyProfile, Dict[str, Any]],
     spatial_context: Optional[Union[Dict[str, Any], SpilloverResult]] = None,
@@ -575,6 +645,12 @@ def generate_district_policy_brief_pdf(
         )
 
     radar_b64 = None
+    if radar_fig is None:
+        try:
+            radar_fig = _build_radar_chart_figure(p_data, is_id=is_id)
+        except Exception:
+            radar_fig = None
+
     if radar_fig is not None:
         try:
             import copy
@@ -583,25 +659,25 @@ def generate_district_policy_brief_pdf(
             r_fig.update_layout(
                 paper_bgcolor="#ffffff",
                 plot_bgcolor="#ffffff",
-                font_color="#0f172a",
-                margin=dict(l=8, r=8, t=8, b=8),
+                font=dict(color="#0f172a", family="Helvetica, Arial, sans-serif"),
+                margin=dict(l=15, r=15, t=10, b=10),
                 showlegend=True,
                 legend=dict(
                     orientation="h",
                     yanchor="bottom",
-                    y=-0.35,
+                    y=-0.22,
                     xanchor="center",
                     x=0.5,
-                    font=dict(size=7.5, color="#334155"),
+                    font=dict(size=8, color="#334155"),
                 ),
             )
             if hasattr(r_fig.layout, "polar") and r_fig.layout.polar is not None:
                 r_fig.layout.polar.bgcolor = "#ffffff"
                 if hasattr(r_fig.layout.polar, "radialaxis"):
-                    r_fig.layout.polar.radialaxis.tickfont = dict(size=6, color="#64748b")
+                    r_fig.layout.polar.radialaxis.tickfont = dict(size=7, color="#64748b")
                 if hasattr(r_fig.layout.polar, "angularaxis"):
-                    r_fig.layout.polar.angularaxis.tickfont = dict(size=6.5, color="#0f172a")
-            img_bytes = r_fig.to_image(format="png", width=360, height=270, scale=2)
+                    r_fig.layout.polar.angularaxis.tickfont = dict(size=7.5, color="#0f172a")
+            img_bytes = r_fig.to_image(format="png", width=520, height=330, scale=2)
             radar_b64 = base64.b64encode(img_bytes).decode("utf-8")
         except Exception:
             radar_b64 = None
@@ -650,17 +726,17 @@ def generate_district_policy_brief_pdf(
     css = """
     @page {
       size: A4 portrait;
-      margin: 6mm 8mm 6mm 8mm;
+      margin: 6mm 10mm 6mm 10mm;
       @bottom-right {
         content: counter(page) " / " counter(pages);
         font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-        font-size: 6pt;
+        font-size: 6.5pt;
         color: #64748b;
       }
       @bottom-left {
         content: "Indonesian Disaster Readiness & Gap Explorer (IDR-GE) • BPS PODES & BNPB IRBI 2024";
         font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-        font-size: 6pt;
+        font-size: 6.5pt;
         color: #64748b;
       }
     }
@@ -668,32 +744,29 @@ def generate_district_policy_brief_pdf(
     body {
       font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
       font-size: 7.2pt;
-      line-height: 1.15;
+      line-height: 1.18;
       color: #1e293b;
       margin: 0; padding: 0;
     }
     .header { border-bottom: 2px solid #0284c7; padding-bottom: 2px; margin-bottom: 3px; }
     .title { font-size: 11pt; font-weight: 800; color: #0f172a; margin: 0; }
     .subtitle { font-size: 7.5pt; color: #475569; margin: 1px 0 0 0; }
-    .meta-strip { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 3px; padding: 2px 6px; margin-bottom: 3px; font-size: 6.8pt; }
+    .meta-strip { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 3px; padding: 2.5px 6px; margin-bottom: 3px; font-size: 6.8pt; }
     .grid-5 { display: table; width: 100%; margin-bottom: 3px; }
     .card { display: table-cell; width: 20%; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 3px; padding: 2px 3px; text-align: center; }
     .card-label { font-size: 5.8pt; color: #64748b; font-weight: 700; text-transform: uppercase; }
-    .card-val { font-size: 9pt; font-weight: 800; margin-top: 1px; }
+    .card-val { font-size: 9.5pt; font-weight: 800; margin-top: 1px; }
     .subtext-box { font-size: 6.5pt; color: #475569; margin-bottom: 3px; padding: 1.5px 5px; background: #fff7ed; border: 1px solid #ffedd5; border-radius: 2px; }
     .section-title { font-size: 7pt; font-weight: 800; color: #0f172a; margin: 3px 0 1.5px 0; border-bottom: 1px solid #e2e8f0; padding-bottom: 1px; text-transform: uppercase; letter-spacing: 0.3px; }
-    .two-col { width: 100%; border-collapse: collapse; margin-bottom: 3px; }
-    .two-col td { padding: 0; border: none; vertical-align: top; }
-    table.diag-table { width: 100%; border-collapse: collapse; font-size: 6.5pt; }
-    table.diag-table th { background: #f1f5f9; color: #334155; font-weight: 700; text-align: left; padding: 1.5px 3px; border-bottom: 1px solid #cbd5e1; }
-    table.diag-table td { padding: 1.5px 3px; border-bottom: 1px solid #f1f5f9; color: #1e293b; }
-    .chart-box { border: 1px solid #e2e8f0; border-radius: 3px; padding: 2px; background: #ffffff; text-align: center; }
-    .chart-title { font-size: 6pt; font-weight: 700; color: #475569; margin-bottom: 1px; text-transform: uppercase; }
-    .radar-img { width: 100%; max-height: 125px; object-fit: contain; }
-    .spill-box { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 3px; padding: 2.5px 5px; margin-bottom: 3px; font-size: 6.8pt; }
-    .recs { margin: 0; padding-left: 12px; font-size: 6.8pt; line-height: 1.15; }
+    table.diag-table { width: 100%; border-collapse: collapse; font-size: 6.8pt; margin-bottom: 3px; }
+    table.diag-table th { background: #f1f5f9; color: #334155; font-weight: 700; text-align: left; padding: 1.8px 4px; border-bottom: 1px solid #cbd5e1; }
+    table.diag-table td { padding: 1.8px 4px; border-bottom: 1px solid #f1f5f9; color: #1e293b; }
+    .spill-box { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 3px; padding: 2.5px 6px; margin-bottom: 3px; font-size: 6.8pt; }
+    .recs { margin: 0; padding-left: 12px; font-size: 6.8pt; line-height: 1.18; margin-bottom: 3px; }
     .recs li { margin-bottom: 1px; }
     .badge { display: inline-block; padding: 0.5px 3px; border-radius: 2px; font-size: 5.8pt; font-weight: 700; white-space: nowrap; }
+    .chart-container { text-align: center; margin-top: 2px; padding: 2px; border: 1px solid #e2e8f0; border-radius: 4px; background: #ffffff; }
+    .radar-img { max-width: 330px; max-height: 200px; object-fit: contain; }
     .footnote { font-size: 5.8pt; color: #94a3b8; text-align: center; margin-top: 2px; }
     """
 
@@ -701,55 +774,19 @@ def generate_district_policy_brief_pdf(
     lbl_spill_mult = "Multiplier Lintas Batas" if is_id else "Cross-Border Multiplier"
     lbl_spill_share = "Rasio Spillover" if is_id else "Spillover Share"
 
-    radar_title = "Radar Profil Ketahanan" if is_id else "Resilience Radar Profile"
+    radar_title = (
+        "Tolok Ukur Radar Kesiapsiagaan Desa (PODES 2024 vs Koridor & Nasional)"
+        if is_id
+        else "Village Resilience Radar Diagnostic (PODES 2024 vs Corridor & National)"
+    )
+
+    chart_section = ""
     if radar_b64:
-        diag_section = f"""\
-      <table class="two-col">
-        <tr>
-          <td style="width:63%;">
-            <table class="diag-table">
-              <thead>
-                <tr>
-                  <th style="width:11%;">{cols[0]}</th>
-                  <th style="width:39%;">{cols[1]}</th>
-                  <th style="width:10%;">{cols[2]}</th>
-                  <th style="width:10%;">{cols[3]}</th>
-                  <th style="width:10%;">{cols[4]}</th>
-                  <th style="width:10%;">{cols[5]}</th>
-                  <th style="width:10%;">{cols[6]}</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rows_html}
-              </tbody>
-            </table>
-          </td>
-          <td style="width:37%; padding-left: 6px;">
-            <div class="chart-box">
-              <div class="chart-title">{radar_title}</div>
-              <img src="data:image/png;base64,{radar_b64}" class="radar-img" />
-            </div>
-          </td>
-        </tr>
-      </table>"""
-    else:
-        diag_section = f"""\
-      <table class="diag-table">
-        <thead>
-          <tr>
-            <th style="width:10%;">{cols[0]}</th>
-            <th style="width:38%;">{cols[1]}</th>
-            <th style="width:10%;">{cols[2]}</th>
-            <th style="width:10%;">{cols[3]}</th>
-            <th style="width:10%;">{cols[4]}</th>
-            <th style="width:10%;">{cols[5]}</th>
-            <th style="width:12%;">{cols[6]}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows_html}
-        </tbody>
-      </table>"""
+        chart_section = f"""\
+      <div class="section-title">{radar_title}</div>
+      <div class="chart-container">
+        <img src="data:image/png;base64,{radar_b64}" class="radar-img" />
+      </div>"""
 
     html = textwrap.dedent(f"""\
     <!DOCTYPE html>
@@ -782,7 +819,22 @@ def generate_district_policy_brief_pdf(
         <b>{subtext}</b>
       </div>
       <div class="section-title">{tbl_title}</div>
-      {diag_section}
+      <table class="diag-table">
+        <thead>
+          <tr>
+            <th style="width:10%;">{cols[0]}</th>
+            <th style="width:38%;">{cols[1]}</th>
+            <th style="width:10%;">{cols[2]}</th>
+            <th style="width:10%;">{cols[3]}</th>
+            <th style="width:10%;">{cols[4]}</th>
+            <th style="width:10%;">{cols[5]}</th>
+            <th style="width:12%;">{cols[6]}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows_html}
+        </tbody>
+      </table>
       <div class="section-title">{spill_title}</div>
       <div class="spill-box">
         <table style="width:100%; border-collapse:collapse; margin-bottom:1px;">
@@ -800,6 +852,7 @@ def generate_district_policy_brief_pdf(
       <ol class="recs">
         {recs_html}
       </ol>
+      {chart_section}
       <div class="footnote">
         {footnote}
       </div>
