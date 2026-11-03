@@ -731,6 +731,11 @@ def main():
     """).strip()
     st.sidebar.markdown(sidebar_meta, unsafe_allow_html=True)
 
+    is_specific_province = (
+        selected_province != "All 38 Provinces"
+        and not selected_province.startswith("All ")
+    )
+
     # National Executive Policy Brief PDF Download Button
     if selected_corridor == "National (All 7 Corridors)" and not is_specific_province:
         try:
@@ -771,10 +776,6 @@ def main():
             st.sidebar.caption(f"Regional brief notice: {exc}")
 
     # Provincial Executive Policy Brief PDF Download Button
-    is_specific_province = (
-        selected_province != "All 38 Provinces"
-        and not selected_province.startswith("All ")
-    )
     if is_specific_province:
         try:
             prov_profile = compute_provincial_profile(gdf, selected_province)
