@@ -334,6 +334,10 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "en": "📄 Download Executive Policy Brief (PDF) — {kab}",
         "id": "📄 Unduh Ringkasan Kebijakan Eksekutif (PDF) — {kab}",
     },
+    "download_prov_pdf_btn": {
+        "en": "📄 Download Provincial Policy Brief (PDF) — {prov}",
+        "id": "📄 Unduh Policy Brief Provinsi (PDF) — {prov}",
+    },
 
     # Micro-indicator readable names
     "ind_ews": {

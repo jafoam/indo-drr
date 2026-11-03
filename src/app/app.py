@@ -34,10 +34,12 @@ from src.analytics.simulation import (
 )
 from src.analytics.moran import compute_morans_i, compute_lisa
 from src.analytics.profile import compute_regency_profile
+from src.analytics.provincial import compute_provincial_profile
 from src.analytics.spillover import estimate_spatial_spillover
 from src.analytics.exporter import (
     generate_district_policy_brief,
     generate_district_policy_brief_pdf,
+    generate_provincial_policy_brief_pdf,
     generate_corridor_policy_brief,
 )
 from src.app.components.choropleth import (
@@ -743,6 +745,30 @@ def main():
             mime="text/markdown",
             use_container_width=True,
         )
+
+    # Provincial Executive Policy Brief PDF Download Button
+    is_specific_province = (
+        selected_province != "All 38 Provinces"
+        and not selected_province.startswith("All ")
+    )
+    if is_specific_province:
+        try:
+            prov_profile = compute_provincial_profile(gdf, selected_province)
+            safe_prov_slug = selected_province.lower().replace(" ", "_").replace(".", "")
+            prov_pdf_bytes = generate_provincial_policy_brief_pdf(
+                prov_profile,
+                lang=lang_code,
+            )
+            st.sidebar.download_button(
+                label=t("download_prov_pdf_btn", lang_code, prov=selected_province),
+                data=prov_pdf_bytes,
+                file_name=f"Policy_Brief_Provinsi_{safe_prov_slug}_{lang_code.upper()}.pdf",
+                mime="application/pdf",
+                key=f"dl_prov_pdf_{safe_prov_slug}",
+                use_container_width=True,
+            )
+        except Exception as exc:
+            st.sidebar.caption(f"Provincial brief notice: {exc}")
 
     # -----------------------------------------------------------------------
     # Main Header

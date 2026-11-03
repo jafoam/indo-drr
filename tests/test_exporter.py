@@ -11,8 +11,10 @@ from src.analytics.spillover import estimate_spatial_spillover
 from src.analytics.exporter import (
     generate_district_policy_brief,
     generate_district_policy_brief_pdf,
+    generate_provincial_policy_brief_pdf,
     generate_corridor_policy_brief,
 )
+from src.analytics.provincial import compute_provincial_profile
 from src.app.components.inspector import render_radar_chart
 
 
@@ -129,3 +131,47 @@ def test_generate_district_policy_brief_pdf(loaded_data):
     extracted_text_en = reader_en.pages[0].extract_text()
     assert "Simeulue" in extracted_text_en
     assert any(term in extracted_text_en for term in ["Deficit", "Below Median", "Adequate"])
+
+
+def test_compute_provincial_profile(loaded_data):
+    """Verify provincial aggregation engine calculations."""
+    prof = compute_provincial_profile(loaded_data.gdf, "Aceh")
+    assert prof["provinsi"] == "Aceh"
+    assert prof["corridor"] == "Sumatera"
+    assert prof["total_units"] == 23
+    assert 0.0 <= prof["risk_score"] <= 1.0
+    assert 0.0 <= prof["mitigation_score"] <= 1.0
+    assert len(prof["top_bottlenecks"]) <= 5
+    assert prof["top_bottlenecks"][0]["gap_score"] >= prof["top_bottlenecks"][-1]["gap_score"]
+    assert "EWS" in prof["indicators"]
+    assert "IPM" in prof["indicators"]
+
+
+def test_generate_provincial_policy_brief_pdf(loaded_data):
+    """Verify single-page A4 provincial PDF brief generation for ID and EN locales."""
+    prof = compute_provincial_profile(loaded_data.gdf, "Aceh")
+
+    # 1. Indonesian locale
+    pdf_id = generate_provincial_policy_brief_pdf(prof, lang="id")
+    assert isinstance(pdf_id, bytes)
+    assert pdf_id.startswith(b"%PDF-")
+    reader_id = pypdf.PdfReader(io.BytesIO(pdf_id))
+    assert len(reader_id.pages) == 1, f"Expected strictly 1 page, got {len(reader_id.pages)}"
+
+    extracted_id = reader_id.pages[0].extract_text()
+    assert "Aceh" in extracted_id
+    assert "PROVINSI" in extracted_id
+    assert "GUBERNUR" in extracted_id.upper() or "BPBD" in extracted_id.upper()
+
+    # 2. English locale
+    pdf_en = generate_provincial_policy_brief_pdf(prof, lang="en")
+    assert isinstance(pdf_en, bytes)
+    assert pdf_en.startswith(b"%PDF-")
+    reader_en = pypdf.PdfReader(io.BytesIO(pdf_en))
+    assert len(reader_en.pages) == 1, f"Expected strictly 1 page, got {len(reader_en.pages)}"
+
+    extracted_en = reader_en.pages[0].extract_text()
+    assert "Aceh" in extracted_en
+    assert "PROVINCE" in extracted_en
+    assert "GOVERNOR" in extracted_en.upper() or "BPBD" in extracted_en.upper()
+

@@ -947,3 +947,336 @@ Jurisdictions requiring immediate priority interventions within the {corridor_na
 2. **Prioritize Regional Telecom Hardening**: Address systemic cellular signal vulnerabilities in peripheral regencies.
 3. **Institutionalize Multi-District Watershed Compacts**: Establish cross-boundary river authority committees with unified flood mitigation funding.
 """.strip()
+
+
+def generate_provincial_policy_brief_pdf(
+    prov_profile: Dict[str, Any],
+    lang: str = "id",
+    radar_fig: Optional[Any] = None,
+) -> bytes:
+    """Generate executive, publication-ready, single-page A4 PDF policy brief for a province.
+
+    Args:
+        prov_profile: Aggregated provincial profile dictionary from compute_provincial_profile.
+        lang: Language code ('id' for Indonesian, 'en' for English).
+        radar_fig: Optional Plotly figure of the provincial radar chart to embed.
+
+    Returns:
+        bytes: Compiled PDF document adhering to single-page constraint.
+    """
+    if weasyprint is None:
+        raise RuntimeError(
+            "WeasyPrint is not available or native dependencies (pango/gobject) are missing."
+        )
+
+    is_id = (lang.lower() == "id")
+    p = prov_profile
+    prov_name = str(p.get("provinsi", "Provinsi"))
+    corridor = str(p.get("corridor", "National"))
+    total_units = int(p.get("total_units", 0))
+    risk_score = float(p.get("risk_score", 0.0))
+    mitigation_score = float(p.get("mitigation_score", 0.0))
+    gap_score = float(p.get("gap_score", risk_score - mitigation_score))
+    readiness_balance = float(p.get("readiness_balance", mitigation_score - risk_score))
+    adequacy_ratio = float(p.get("adequacy_ratio", 100.0))
+    gap_rank = int(p.get("gap_rank", 1))
+    total_provs = int(p.get("total_provinces", 38))
+    critical_count = int(p.get("critical_count", 0))
+    critical_share_pct = float(p.get("critical_share_pct", 0.0))
+    deficit_pct = max(0.0, 100.0 - adequacy_ratio)
+
+    doc_title = (
+        "Ringkasan Kebijakan Eksekutif Kesiapsiagaan Bencana (Tingkat Provinsi)"
+        if is_id
+        else "Executive Disaster Readiness & Resilience Policy Brief (Provincial Level)"
+    )
+    doc_subtitle = (
+        f"Penilaian Diagnostik Ketahanan Spasial Provinsi: {prov_name}"
+        if is_id
+        else f"Provincial Spatial Resilience Diagnostic Assessment: {prov_name}"
+    )
+
+    lbl_prov = "PROVINSI" if is_id else "PROVINCE"
+    lbl_corr = "KORIDOR" if is_id else "CORRIDOR"
+    lbl_total = "TOTAL WILAYAH" if is_id else "TOTAL DISTRICTS"
+    lbl_crit = "KAB/KOTA KRITIS" if is_id else "CRITICAL DISTRICTS"
+    lbl_rank = "Peringkat Kesenjangan" if is_id else "Readiness Gap Rank"
+    lbl_of = "dari 38 Provinsi" if is_id else "of 38 Provinces"
+
+    lbl_risk = "Rerata Risiko (Ri)" if is_id else "Avg Risk (Ri)"
+    lbl_mit = "Rerata Mitigasi (Mi)" if is_id else "Avg Mitigation (Mi)"
+    lbl_gap = "Gap Bersih (Gi)" if is_id else "Net Gap (Gi)"
+    lbl_bal = "Neraca Bersih" if is_id else "Net Balance"
+    lbl_ad = "Rasio Kecukupan" if is_id else "Adequacy Ratio"
+
+    gap_color = "#b91c1c" if gap_score > 0 else "#15803d"
+    bal_color = "#b91c1c" if readiness_balance < -0.10 else ("#0284c7" if readiness_balance > 0.10 else "#64748b")
+    ad_color = "#b91c1c" if adequacy_ratio < 50.0 else ("#b45309" if adequacy_ratio < 80.0 else "#15803d")
+
+    subtext = (
+        f"Kapasitas mitigasi rata-rata provinsi memenuhi {adequacy_ratio:.1f}% kebutuhan risiko (Defisit: {deficit_pct:.1f}%). "
+        f"{critical_count} dari {total_units} kab/kota berada di zona Kesenjangan Kritis (R3-M1)."
+        if is_id
+        else f"Average provincial mitigation covers {adequacy_ratio:.1f}% of risk burden (Deficit: {deficit_pct:.1f}%). "
+        f"{critical_count} of {total_units} districts are in the Critical Gap zone (R3-M1)."
+    )
+
+    # Top Bottleneck Districts rows
+    top_title = (
+        f"Wilayah Prioritas Intervensi Tertinggi (Top Bottleneck Districts di {prov_name})"
+        if is_id
+        else f"Highest Priority Intervention Jurisdictions (Top Bottlenecks in {prov_name})"
+    )
+    th_code = "Kode" if is_id else "Code"
+    th_dist = "Kabupaten / Kota" if is_id else "Regency / City"
+    th_rk = "Risiko (Ri)" if is_id else "Risk (Ri)"
+    th_mk = "Mitigasi (Mi)" if is_id else "Mitigation (Mi)"
+    th_gk = "Gap (Gi)" if is_id else "Gap (Gi)"
+    th_ad = "Rasio" if is_id else "Adequacy"
+    th_stat = "Status" if is_id else "Status"
+
+    top5_rows = ""
+    for b in p.get("top_bottlenecks", []):
+        cat = str(b.get("bivariate_category", "R3-M1"))
+        bg = "#fee2e2" if "R3-M1" in cat else "#fef3c7"
+        fg = "#b91c1c" if "R3-M1" in cat else "#b45309"
+        badge = f'<span class="badge" style="background:{bg}; color:{fg};">{cat}</span>'
+        top5_rows += (
+            f"<tr><td>{b['kode_wil']}</td><td><b>{b['kab_kota']}</b></td>"
+            f"<td>{b['risk_score']:.3f}</td><td>{b['mitigation_score']:.3f}</td>"
+            f'<td style="color:#b91c1c;">{b["gap_score"]:+.3f}</td><td>{b["adequacy_ratio"]:.1f}%</td>'
+            f"<td>{badge}</td></tr>"
+        )
+
+    # Aggregated Indicators rows
+    ind_title = (
+        "Agregasi Tolok Ukur Indikator Ketahanan Desa (PODES 2024 vs Koridor & Nasional)"
+        if is_id
+        else "Aggregated Village Resilience Indicator Diagnostic (PODES 2024 vs Benchmarks)"
+    )
+    th_ind = "Indikator Ketahanan Desa" if is_id else "Village Resilience Dimension"
+    th_pmean = "Rerata Prov" if is_id else "Prov. Mean"
+    th_nmed = "Median Nas" if is_id else "Nat. Median"
+    th_cmed = "Median Kor" if is_id else "Corr. Median"
+
+    indicators_meta = [
+        ("EWS", "Sistem Peringatan Dini", "Early Warning Systems"),
+        ("RAMBU", "Rambu & Jalur Evakuasi", "Evacuation Signage & Routes"),
+        ("PERKAP", "Perlengkapan Keselamatan", "Emergency Safety Equipment"),
+        ("RAWAT_SUNGAI", "Perawatan Aliran Air & Tanggul", "Waterway & Embankment Upkeep"),
+        ("GOTONG_ROYONG", "Modal Sosial Gotong Royong", "Social Capital & Mutual Aid"),
+        ("SINYAL_BURUK", "Keterbatasan Sinyal (Blindspot)", "Telecom Blindspots"),
+        ("IPM", "Indeks Pembangunan Manusia", "Human Development Index"),
+    ]
+
+    raw_inds = p.get("indicators", {})
+    inds_rows = ""
+    for code, name_id, name_en in indicators_meta:
+        name = name_id if is_id else name_en
+        m = raw_inds.get(code, {"value": 0.0, "national_median": 0.0, "corridor_median": 0.0, "is_negative": False})
+        val = m.get("value", 0.0)
+        nmed = m.get("national_median", 0.0)
+        cmed = m.get("corridor_median", 0.0)
+        is_neg = m.get("is_negative", False) or code == "SINYAL_BURUK"
+
+        unit = "%" if code != "IPM" else ""
+        is_lagging = (val > nmed) if is_neg else (val < nmed)
+        status_txt = ("Di Bawah Median" if is_lagging else "Cukup Baik") if is_id else ("Below Median" if is_lagging else "Adequate")
+        bg = "#fef3c7" if is_lagging else "#dcfce7"
+        fg = "#b45309" if is_lagging else "#15803d"
+        badge = f'<span class="badge" style="background:{bg}; color:{fg};">{status_txt}</span>'
+
+        inds_rows += (
+            f"<tr><td>{code} - {name}</td><td>{val:.2f}{unit}</td>"
+            f"<td>{nmed:.2f}{unit}</td><td>{cmed:.2f}{unit}</td><td>{badge}</td></tr>"
+        )
+
+    # Macro recommendations
+    recs_title = (
+        "Arahan Kebijakan Makro Pemerintah Provinsi (Gubernur & BPBD Provinsi)"
+        if is_id
+        else "Macro-Policy Directives for Provincial Authorities (Governor & BPBD)"
+    )
+    recs = [
+        f"<b>Alokasi Anggaran Khusus & Belanja Tidak Terduga (BTT):</b> Prioritaskan transfer bantuan keuangan provinsi bagi {critical_count} kabupaten/kota dengan defisit kesiapsiagaan kritis guna pengadaan logistik dasar bencana."
+        if is_id
+        else f"<b>Targeted Contingency Fiscal Transfers (BTT):</b> Prioritize dedicated provincial grant allocations toward the {critical_count} critical-gap districts to establish minimum emergency readiness.",
+        f"<b>Standardisasi Logistik & Jalur Evakuasi Lintas Batas:</b> Harmonisasi penempatan posko siaga dan koridor evakuasi terpadu antarkabupaten/kota di Koridor {corridor}."
+        if is_id
+        else f"<b>Cross-Boundary Logistics & Evacuation Corridors:</b> Harmonize evacuation wayfinding and regional warehouse pre-positioning across district borders within the {corridor} Corridor.",
+        f"<b>Akselerasi Pengentasan Titik Buta Telekomunikasi & Sensor EWS:</b> Pimpin koordinasi bersama Diskominfo dan operator telekomunikasi untuk instalasi pemancar radio darurat dan telemetri otomatis di kecamatan rentan."
+        if is_id
+        else f"<b>Telecommunication Blindspot Mitigation & Automated EWS:</b> Coordinate with provincial telecom and civil agencies to deploy redundant emergency radio repeaters and sensor telemetry in remote hotspots.",
+    ]
+    recs_html = "".join(f"<li>{r}</li>" for r in recs)
+
+    # Radar Chart
+    radar_b64 = None
+    if radar_fig is None:
+        try:
+            radar_fig = _build_radar_chart_figure(p, is_id=is_id)
+        except Exception:
+            radar_fig = None
+
+    if radar_fig is not None:
+        try:
+            import copy
+            import base64
+            r_fig = copy.deepcopy(radar_fig)
+            r_fig.update_layout(
+                paper_bgcolor="#ffffff",
+                plot_bgcolor="#ffffff",
+                font=dict(color="#0f172a", family="Helvetica, Arial, sans-serif"),
+                margin=dict(l=15, r=15, t=10, b=10),
+                showlegend=True,
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=-0.22,
+                    xanchor="center",
+                    x=0.5,
+                    font=dict(size=7.5, color="#334155"),
+                ),
+            )
+            if hasattr(r_fig.layout, "polar") and r_fig.layout.polar is not None:
+                r_fig.layout.polar.bgcolor = "#ffffff"
+                if hasattr(r_fig.layout.polar, "radialaxis"):
+                    r_fig.layout.polar.radialaxis.tickfont = dict(size=6.5, color="#64748b")
+                if hasattr(r_fig.layout.polar, "angularaxis"):
+                    r_fig.layout.polar.angularaxis.tickfont = dict(size=7, color="#0f172a")
+            img_bytes = r_fig.to_image(format="png", width=500, height=300, scale=2)
+            radar_b64 = base64.b64encode(img_bytes).decode("utf-8")
+        except Exception:
+            radar_b64 = None
+
+    radar_title = (
+        f"Tolok Ukur Radar Kesiapsiagaan Provinsi ({prov_name} vs Koridor & Nasional)"
+        if is_id
+        else f"Provincial Resilience Radar Benchmark ({prov_name} vs Corridor & National)"
+    )
+    chart_section = ""
+    if radar_b64:
+        chart_section = f"""\
+      <div class="section-title">{radar_title}</div>
+      <div class="chart-container">
+        <img src="data:image/png;base64,{radar_b64}" class="radar-img" />
+      </div>"""
+
+    footnote = (
+        "Disintesis dari Data BPS PODES 2024 dan BNPB IRBI 2024. Agregasi Tingkat Provinsi IDR-GE."
+        if is_id
+        else "Synthesized from BPS PODES 2024 and BNPB IRBI 2024. IDR-GE Provincial Spatial Aggregation."
+    )
+
+    css = """
+    @page {
+      size: A4 portrait;
+      margin: 5mm 9mm 5mm 9mm;
+      @bottom-right { content: counter(page) " / " counter(pages); font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 6pt; color: #64748b; }
+      @bottom-left { content: "Indonesian Disaster Readiness & Gap Explorer (IDR-GE) • BPS PODES & BNPB IRBI 2024"; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 6pt; color: #64748b; }
+    }
+    *, *::before, *::after { box-sizing: border-box; }
+    body {
+      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      font-size: 7pt;
+      line-height: 1.15;
+      color: #1e293b;
+      margin: 0; padding: 0;
+    }
+    .header { border-bottom: 2px solid #0284c7; padding-bottom: 2px; margin-bottom: 3px; }
+    .title { font-size: 11pt; font-weight: 800; color: #0f172a; margin: 0; }
+    .subtitle { font-size: 7.5pt; color: #475569; margin: 1px 0 0 0; }
+    .meta-strip { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 3px; padding: 2px 6px; margin-bottom: 3px; font-size: 6.8pt; }
+    .grid-5 { display: table; width: 100%; margin-bottom: 3px; }
+    .card { display: table-cell; width: 20%; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 3px; padding: 2px 3px; text-align: center; }
+    .card-label { font-size: 5.8pt; color: #64748b; font-weight: 700; text-transform: uppercase; }
+    .card-val { font-size: 9pt; font-weight: 800; margin-top: 1px; }
+    .subtext-box { font-size: 6.5pt; color: #475569; margin-bottom: 3px; padding: 1.5px 5px; background: #fff7ed; border: 1px solid #ffedd5; border-radius: 2px; }
+    .section-title { font-size: 7pt; font-weight: 800; color: #0f172a; margin: 2.5px 0 1.5px 0; border-bottom: 1px solid #e2e8f0; padding-bottom: 1px; text-transform: uppercase; letter-spacing: 0.3px; }
+    table.data-table { width: 100%; border-collapse: collapse; font-size: 6.5pt; margin-bottom: 2.5px; }
+    table.data-table th { background: #f1f5f9; color: #334155; font-weight: 700; text-align: left; padding: 1.5px 3.5px; border-bottom: 1px solid #cbd5e1; }
+    table.data-table td { padding: 1.5px 3.5px; border-bottom: 1px solid #f1f5f9; color: #1e293b; }
+    .recs { margin: 0; padding-left: 12px; font-size: 6.7pt; line-height: 1.15; margin-bottom: 2.5px; }
+    .recs li { margin-bottom: 1px; }
+    .badge { display: inline-block; padding: 0.5px 3px; border-radius: 2px; font-size: 5.8pt; font-weight: 700; white-space: nowrap; }
+    .chart-container { text-align: center; margin-top: 2px; padding: 2px; border: 1px solid #e2e8f0; border-radius: 3px; background: #ffffff; }
+    .radar-img { max-width: 310px; max-height: 165px; object-fit: contain; }
+    .footnote { font-size: 5.8pt; color: #94a3b8; text-align: center; margin-top: 2px; }
+    """
+
+    html = textwrap.dedent(f"""\
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <style>{css}</style>
+    </head>
+    <body>
+      <div class="header">
+        <div class="title">{doc_title}</div>
+        <div class="subtitle">{doc_subtitle}</div>
+      </div>
+      <div class="meta-strip">
+        <table style="width:100%; border-collapse:collapse;">
+          <tr>
+            <td style="border:none; padding:0;"><b>{lbl_prov}:</b> {prov_name} | <b>{lbl_corr}:</b> {corridor} | <b>{lbl_total}:</b> {total_units}</td>
+            <td style="border:none; padding:0; text-align:right;"><b>{lbl_crit}:</b> {critical_count} ({critical_share_pct}%) | <b>{lbl_rank}:</b> #{gap_rank} {lbl_of}</td>
+          </tr>
+        </table>
+      </div>
+      <div class="grid-5">
+        <div class="card"><div class="card-label">{lbl_risk}</div><div class="card-val" style="color:#b91c1c;">{risk_score:.3f}</div></div>
+        <div class="card"><div class="card-label">{lbl_mit}</div><div class="card-val" style="color:#0284c7;">{mitigation_score:.3f}</div></div>
+        <div class="card"><div class="card-label">{lbl_gap}</div><div class="card-val" style="color:{gap_color};">{gap_score:+.3f}</div></div>
+        <div class="card"><div class="card-label">{lbl_bal}</div><div class="card-val" style="color:{bal_color};">{readiness_balance:+.3f}</div></div>
+        <div class="card"><div class="card-label">{lbl_ad}</div><div class="card-val" style="color:{ad_color};">{adequacy_ratio:.1f}%</div></div>
+      </div>
+      <div class="subtext-box">
+        <b>{subtext}</b>
+      </div>
+      <div class="section-title">{top_title}</div>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th style="width:10%;">{th_code}</th>
+            <th style="width:36%;">{th_dist}</th>
+            <th style="width:12%;">{th_rk}</th>
+            <th style="width:12%;">{th_mk}</th>
+            <th style="width:12%;">{th_gk}</th>
+            <th style="width:10%;">{th_ad}</th>
+            <th style="width:8%;">{th_stat}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {top5_rows}
+        </tbody>
+      </table>
+      <div class="section-title">{ind_title}</div>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th style="width:28%;">{th_ind}</th>
+            <th style="width:18%;">{th_pmean}</th>
+            <th style="width:18%;">{th_nmed}</th>
+            <th style="width:18%;">{th_cmed}</th>
+            <th style="width:18%;">{th_stat}</th>
+          </tr>
+        </thead>
+        <tbody>
+          {inds_rows}
+        </tbody>
+      </table>
+      <div class="section-title">{recs_title}</div>
+      <ol class="recs">
+        {recs_html}
+      </ol>
+      {chart_section}
+      <div class="footnote">
+        {footnote}
+      </div>
+    </body>
+    </html>
+    """).strip()
+
+    return weasyprint.HTML(string=html).write_pdf()
+
