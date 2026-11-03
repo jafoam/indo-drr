@@ -424,6 +424,7 @@ def generate_district_policy_brief_pdf(
     profile_data: Union[RegencyProfile, Dict[str, Any]],
     spatial_context: Optional[Union[Dict[str, Any], SpilloverResult]] = None,
     lang: str = "id",
+    radar_fig: Optional[Any] = None,
 ) -> bytes:
     """Generate publication-ready, single-page A4 PDF policy brief via WeasyPrint.
 
@@ -433,6 +434,7 @@ def generate_district_policy_brief_pdf(
         profile_data: RegencyProfile dataclass or dictionary with diagnostic micro-metrics.
         spatial_context: Optional SpilloverResult or dictionary with spatial lag parameters.
         lang: Language code ('id' for Indonesian, 'en' for English).
+        radar_fig: Optional Plotly figure of the resilience radar chart to embed.
 
     Returns:
         bytes: Compiled PDF document.
@@ -538,24 +540,31 @@ def generate_district_policy_brief_pdf(
     rows_html = ""
     for code, name_id, name_en in indicators_meta:
         m_raw = raw_indicators.get(code)
-        m = _extract_metric_info(m_raw) if m_raw else {"value": 0.0, "national_median": 0.0, "corridor_median": 0.0, "corridor_pct": 50.0}
+        m = (
+            _extract_metric_info(m_raw)
+            if m_raw
+            else {
+                "value": 0.0,
+                "national_median": 0.0,
+                "corridor_median": 0.0,
+                "corridor_pct": 50.0,
+                "national_pct": 50.0,
+                "is_negative": False,
+            }
+        )
         unit = "%" if code != "IPM" else ""
         name = name_id if is_id else name_en
 
-        if code == "SINYAL_BURUK":
-            if m["corridor_pct"] >= 60.0:
-                badge = ("Defisit", "Deficit", "#fee2e2", "#b91c1c")
-            elif m["corridor_pct"] <= 25.0:
-                badge = ("Sangat Unggul", "Substantial Surplus", "#dcfce7", "#15803d")
-            else:
-                badge = ("Memadai", "Adequate", "#e0f2fe", "#0369a1")
+        # 3-Tier Status aligned with inspector.py:
+        # Tertinggal (Deficit), Di Bawah Median (Below Median), Cukup Baik (Adequate)
+        is_neg = (code == "SINYAL_BURUK") or m.get("is_negative", False)
+        effective_nat_pct = (100.0 - m["national_pct"]) if is_neg else m["national_pct"]
+        if effective_nat_pct < 25.0:
+            badge = ("Tertinggal", "Deficit", "#fee2e2", "#b91c1c")
+        elif effective_nat_pct <= 50.0 or (m["value"] > m["national_median"] if is_neg else m["value"] < m["national_median"]):
+            badge = ("Di Bawah Median", "Below Median", "#fef3c7", "#b45309")
         else:
-            if m["corridor_pct"] >= 75.0:
-                badge = ("Sangat Unggul", "Substantial Surplus", "#dcfce7", "#15803d")
-            elif m["corridor_pct"] >= 40.0 or m["value"] >= m["national_median"]:
-                badge = ("Memadai", "Adequate", "#e0f2fe", "#0369a1")
-            else:
-                badge = ("Defisit", "Deficit", "#fee2e2", "#b91c1c")
+            badge = ("Cukup Baik", "Adequate", "#dcfce7", "#15803d")
 
         status_txt = badge[0] if is_id else badge[1]
         badge_html = f'<span class="badge" style="background:{badge[2]}; color:{badge[3]};">{status_txt}</span>'
@@ -564,6 +573,38 @@ def generate_district_policy_brief_pdf(
             f"<td>{m['national_median']:.2f}{unit}</td><td>{m['corridor_median']:.2f}{unit}</td>"
             f"<td>{m['corridor_pct']:.1f}%</td><td>{badge_html}</td></tr>"
         )
+
+    radar_b64 = None
+    if radar_fig is not None:
+        try:
+            import copy
+            import base64
+            r_fig = copy.deepcopy(radar_fig)
+            r_fig.update_layout(
+                paper_bgcolor="#ffffff",
+                plot_bgcolor="#ffffff",
+                font_color="#0f172a",
+                margin=dict(l=8, r=8, t=8, b=8),
+                showlegend=True,
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom",
+                    y=-0.35,
+                    xanchor="center",
+                    x=0.5,
+                    font=dict(size=7.5, color="#334155"),
+                ),
+            )
+            if hasattr(r_fig.layout, "polar") and r_fig.layout.polar is not None:
+                r_fig.layout.polar.bgcolor = "#ffffff"
+                if hasattr(r_fig.layout.polar, "radialaxis"):
+                    r_fig.layout.polar.radialaxis.tickfont = dict(size=6, color="#64748b")
+                if hasattr(r_fig.layout.polar, "angularaxis"):
+                    r_fig.layout.polar.angularaxis.tickfont = dict(size=6.5, color="#0f172a")
+            img_bytes = r_fig.to_image(format="png", width=360, height=270, scale=2)
+            radar_b64 = base64.b64encode(img_bytes).decode("utf-8")
+        except Exception:
+            radar_b64 = None
 
     spill_title = (
         "Konteks Rembesan Spasial (SAR Model)"
@@ -609,80 +650,91 @@ def generate_district_policy_brief_pdf(
     css = """
     @page {
       size: A4 portrait;
-      margin: 10mm 12mm 10mm 12mm;
+      margin: 6mm 8mm 6mm 8mm;
       @bottom-right {
         content: counter(page) " / " counter(pages);
         font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-        font-size: 7.5pt;
+        font-size: 6pt;
         color: #64748b;
       }
       @bottom-left {
         content: "Indonesian Disaster Readiness & Gap Explorer (IDR-GE) • BPS PODES & BNPB IRBI 2024";
         font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-        font-size: 7.5pt;
+        font-size: 6pt;
         color: #64748b;
       }
     }
     *, *::before, *::after { box-sizing: border-box; }
     body {
       font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-      font-size: 8pt;
-      line-height: 1.25;
+      font-size: 7.2pt;
+      line-height: 1.15;
       color: #1e293b;
       margin: 0; padding: 0;
     }
-    .header { border-bottom: 2px solid #0284c7; padding-bottom: 4px; margin-bottom: 5px; }
-    .title { font-size: 13pt; font-weight: 800; color: #0f172a; margin: 0; }
-    .subtitle { font-size: 8.5pt; color: #475569; margin: 1px 0 0 0; }
-    .meta-strip { display: flex; justify-content: space-between; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 3px; padding: 4px 8px; margin-bottom: 5px; font-size: 7.5pt; }
-    .grid-5 { display: flex; gap: 4px; margin-bottom: 4px; }
-    .card { flex: 1; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 3px; padding: 3px 4px; text-align: center; }
-    .card-label { font-size: 6.5pt; color: #64748b; font-weight: 700; text-transform: uppercase; }
-    .card-val { font-size: 10.5pt; font-weight: 800; margin-top: 1px; }
-    .subtext-box { font-size: 7pt; color: #475569; margin-bottom: 5px; padding: 2px 6px; background: #fff7ed; border: 1px solid #ffedd5; border-radius: 2px; }
-    .section-title { font-size: 8pt; font-weight: 800; color: #0f172a; margin: 5px 0 3px 0; border-bottom: 1px solid #e2e8f0; padding-bottom: 2px; text-transform: uppercase; letter-spacing: 0.3px; }
-    table { width: 100%; border-collapse: collapse; font-size: 7.5pt; margin-bottom: 5px; }
-    th { background: #f1f5f9; color: #334155; font-weight: 700; text-align: left; padding: 2.5px 5px; border-bottom: 1px solid #cbd5e1; }
-    td { padding: 2.5px 5px; border-bottom: 1px solid #f1f5f9; color: #1e293b; }
-    .spill-box { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 3px; padding: 4px 8px; margin-bottom: 5px; font-size: 7.5pt; }
-    .recs { margin: 0; padding-left: 14px; font-size: 7.5pt; line-height: 1.25; }
-    .recs li { margin-bottom: 2px; }
-    .badge { display: inline-block; padding: 1px 4px; border-radius: 2px; font-size: 6.5pt; font-weight: 700; }
-    .footnote { font-size: 6.5pt; color: #94a3b8; text-align: center; margin-top: 4px; }
+    .header { border-bottom: 2px solid #0284c7; padding-bottom: 2px; margin-bottom: 3px; }
+    .title { font-size: 11pt; font-weight: 800; color: #0f172a; margin: 0; }
+    .subtitle { font-size: 7.5pt; color: #475569; margin: 1px 0 0 0; }
+    .meta-strip { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 3px; padding: 2px 6px; margin-bottom: 3px; font-size: 6.8pt; }
+    .grid-5 { display: table; width: 100%; margin-bottom: 3px; }
+    .card { display: table-cell; width: 20%; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 3px; padding: 2px 3px; text-align: center; }
+    .card-label { font-size: 5.8pt; color: #64748b; font-weight: 700; text-transform: uppercase; }
+    .card-val { font-size: 9pt; font-weight: 800; margin-top: 1px; }
+    .subtext-box { font-size: 6.5pt; color: #475569; margin-bottom: 3px; padding: 1.5px 5px; background: #fff7ed; border: 1px solid #ffedd5; border-radius: 2px; }
+    .section-title { font-size: 7pt; font-weight: 800; color: #0f172a; margin: 3px 0 1.5px 0; border-bottom: 1px solid #e2e8f0; padding-bottom: 1px; text-transform: uppercase; letter-spacing: 0.3px; }
+    .two-col { width: 100%; border-collapse: collapse; margin-bottom: 3px; }
+    .two-col td { padding: 0; border: none; vertical-align: top; }
+    table.diag-table { width: 100%; border-collapse: collapse; font-size: 6.5pt; }
+    table.diag-table th { background: #f1f5f9; color: #334155; font-weight: 700; text-align: left; padding: 1.5px 3px; border-bottom: 1px solid #cbd5e1; }
+    table.diag-table td { padding: 1.5px 3px; border-bottom: 1px solid #f1f5f9; color: #1e293b; }
+    .chart-box { border: 1px solid #e2e8f0; border-radius: 3px; padding: 2px; background: #ffffff; text-align: center; }
+    .chart-title { font-size: 6pt; font-weight: 700; color: #475569; margin-bottom: 1px; text-transform: uppercase; }
+    .radar-img { width: 100%; max-height: 125px; object-fit: contain; }
+    .spill-box { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 3px; padding: 2.5px 5px; margin-bottom: 3px; font-size: 6.8pt; }
+    .recs { margin: 0; padding-left: 12px; font-size: 6.8pt; line-height: 1.15; }
+    .recs li { margin-bottom: 1px; }
+    .badge { display: inline-block; padding: 0.5px 3px; border-radius: 2px; font-size: 5.8pt; font-weight: 700; white-space: nowrap; }
+    .footnote { font-size: 5.8pt; color: #94a3b8; text-align: center; margin-top: 2px; }
     """
 
     lbl_spill_rho = "Parameter Spasial Lag (ρ)" if is_id else "Spatial Lag Parameter (ρ)"
     lbl_spill_mult = "Multiplier Lintas Batas" if is_id else "Cross-Border Multiplier"
     lbl_spill_share = "Rasio Spillover" if is_id else "Spillover Share"
 
-    html = textwrap.dedent(f"""\
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      <style>{css}</style>
-    </head>
-    <body>
-      <div class="header">
-        <div class="title">{doc_title}</div>
-        <div class="subtitle">{doc_subtitle}</div>
-      </div>
-      <div class="meta-strip">
-        <div><b>{lbl_kode}:</b> {kw} | <b>{lbl_prov}:</b> {provinsi} | <b>{lbl_corr}:</b> {corridor}</div>
-        <div><b>{lbl_gap_rank}:</b> #{gap_rank} {lbl_total_units} | <span class="badge" style="{badge_style}">{biv_cat} ({biv_text})</span></div>
-      </div>
-      <div class="grid-5">
-        <div class="card"><div class="card-label">{lbl_risk}</div><div class="card-val" style="color:#b91c1c;">{risk_score:.3f}</div></div>
-        <div class="card"><div class="card-label">{lbl_mit}</div><div class="card-val" style="color:#0284c7;">{mitigation_score:.3f}</div></div>
-        <div class="card"><div class="card-label">{lbl_gap}</div><div class="card-val" style="color:{gap_color};">{gap_score:+.3f}</div></div>
-        <div class="card"><div class="card-label">{lbl_bal}</div><div class="card-val" style="color:{bal_color};">{readiness_balance:+.3f}</div></div>
-        <div class="card"><div class="card-label">{lbl_ad}</div><div class="card-val" style="color:{ad_color};">{adequacy_ratio:.1f}%</div></div>
-      </div>
-      <div class="subtext-box">
-        <b>{subtext}</b>
-      </div>
-      <div class="section-title">{tbl_title}</div>
-      <table>
+    radar_title = "Radar Profil Ketahanan" if is_id else "Resilience Radar Profile"
+    if radar_b64:
+        diag_section = f"""\
+      <table class="two-col">
+        <tr>
+          <td style="width:63%;">
+            <table class="diag-table">
+              <thead>
+                <tr>
+                  <th style="width:11%;">{cols[0]}</th>
+                  <th style="width:39%;">{cols[1]}</th>
+                  <th style="width:10%;">{cols[2]}</th>
+                  <th style="width:10%;">{cols[3]}</th>
+                  <th style="width:10%;">{cols[4]}</th>
+                  <th style="width:10%;">{cols[5]}</th>
+                  <th style="width:10%;">{cols[6]}</th>
+                </tr>
+              </thead>
+              <tbody>
+                {rows_html}
+              </tbody>
+            </table>
+          </td>
+          <td style="width:37%; padding-left: 6px;">
+            <div class="chart-box">
+              <div class="chart-title">{radar_title}</div>
+              <img src="data:image/png;base64,{radar_b64}" class="radar-img" />
+            </div>
+          </td>
+        </tr>
+      </table>"""
+    else:
+        diag_section = f"""\
+      <table class="diag-table">
         <thead>
           <tr>
             <th style="width:10%;">{cols[0]}</th>
@@ -697,15 +749,50 @@ def generate_district_policy_brief_pdf(
         <tbody>
           {rows_html}
         </tbody>
-      </table>
+      </table>"""
+
+    html = textwrap.dedent(f"""\
+    <!DOCTYPE html>
+    <html>
+    <head>
+      <meta charset="utf-8">
+      <style>{css}</style>
+    </head>
+    <body>
+      <div class="header">
+        <div class="title">{doc_title}</div>
+        <div class="subtitle">{doc_subtitle}</div>
+      </div>
+      <div class="meta-strip">
+        <table style="width:100%; border-collapse:collapse;">
+          <tr>
+            <td style="border:none; padding:0;"><b>{lbl_kode}:</b> {kw} | <b>{lbl_prov}:</b> {provinsi} | <b>{lbl_corr}:</b> {corridor}</td>
+            <td style="border:none; padding:0; text-align:right;"><b>{lbl_gap_rank}:</b> #{gap_rank} {lbl_total_units} | <span class="badge" style="{badge_style}">{biv_cat} ({biv_text})</span></td>
+          </tr>
+        </table>
+      </div>
+      <div class="grid-5">
+        <div class="card"><div class="card-label">{lbl_risk}</div><div class="card-val" style="color:#b91c1c;">{risk_score:.3f}</div></div>
+        <div class="card"><div class="card-label">{lbl_mit}</div><div class="card-val" style="color:#0284c7;">{mitigation_score:.3f}</div></div>
+        <div class="card"><div class="card-label">{lbl_gap}</div><div class="card-val" style="color:{gap_color};">{gap_score:+.3f}</div></div>
+        <div class="card"><div class="card-label">{lbl_bal}</div><div class="card-val" style="color:{bal_color};">{readiness_balance:+.3f}</div></div>
+        <div class="card"><div class="card-label">{lbl_ad}</div><div class="card-val" style="color:{ad_color};">{adequacy_ratio:.1f}%</div></div>
+      </div>
+      <div class="subtext-box">
+        <b>{subtext}</b>
+      </div>
+      <div class="section-title">{tbl_title}</div>
+      {diag_section}
       <div class="section-title">{spill_title}</div>
       <div class="spill-box">
-        <div style="display:flex; justify-content:space-between; margin-bottom:2px;">
-          <span><b>{lbl_spill_rho}:</b> {spill['rho']:+.3f} (p = {spill['rho_p_value']:.3f})</span>
-          <span><b>{lbl_spill_mult}:</b> {spill['multiplier']:.3f}x</span>
-          <span><b>{lbl_spill_share}:</b> {spill['spillover_ratio']:.1f}%</span>
-        </div>
-        <div style="font-size:7pt; color:#166534;">
+        <table style="width:100%; border-collapse:collapse; margin-bottom:1px;">
+          <tr>
+            <td style="border:none; padding:0;"><b>{lbl_spill_rho}:</b> {spill['rho']:+.3f} (p = {spill['rho_p_value']:.3f})</td>
+            <td style="border:none; padding:0; text-align:center;"><b>{lbl_spill_mult}:</b> {spill['multiplier']:.3f}x</td>
+            <td style="border:none; padding:0; text-align:right;"><b>{lbl_spill_share}:</b> {spill['spillover_ratio']:.1f}%</td>
+          </tr>
+        </table>
+        <div style="font-size:6.5pt; color:#166534;">
           {spill_desc}
         </div>
       </div>

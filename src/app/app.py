@@ -1025,6 +1025,7 @@ def main():
             st.session_state["inspector_district_kw"] = selected_kode
 
         profile = compute_regency_profile(gdf, bivariate_df, kode_wil=selected_kode)
+        radar_fig = render_radar_chart(profile, is_bright=is_bright)
 
         col_insp_card, col_insp_radar = st.columns([1, 1], gap="medium")
         with col_insp_card:
@@ -1043,6 +1044,7 @@ def main():
                     profile,
                     spatial_context=insp_spill,
                     lang=active_lang,
+                    radar_fig=radar_fig,
                 )
                 st.download_button(
                     label=t("download_pdf_brief_btn", active_lang, kab=profile.kab_kota),
@@ -1065,7 +1067,6 @@ def main():
                 use_container_width=True,
             )
         with col_insp_radar:
-            radar_fig = render_radar_chart(profile, is_bright=is_bright)
             st.plotly_chart(radar_fig, use_container_width=True, config={"displayModeBar": False})
 
 

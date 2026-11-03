@@ -13,6 +13,7 @@ from src.analytics.exporter import (
     generate_district_policy_brief_pdf,
     generate_corridor_policy_brief,
 )
+from src.app.components.inspector import render_radar_chart
 
 
 @pytest.fixture(scope="module")
@@ -97,20 +98,34 @@ def test_generate_corridor_policy_brief(loaded_data):
 
 
 def test_generate_district_policy_brief_pdf(loaded_data):
-    """Verify single-page A4 PDF brief generation for ID and EN locales."""
+    """Verify single-page A4 PDF brief generation for ID and EN locales with radar chart."""
     profile = compute_regency_profile(loaded_data.gdf, loaded_data.bivariate_df, kode_wil=1101)
     spillover_res = estimate_spatial_spillover(loaded_data.gdf, weights=loaded_data.weights)
+    radar_fig = render_radar_chart(profile, is_bright=True)
 
-    # 1. Indonesian locale with RegencyProfile dataclass
-    pdf_id = generate_district_policy_brief_pdf(profile, spatial_context=spillover_res, lang="id")
+    # 1. Indonesian locale with RegencyProfile dataclass and embedded radar figure
+    pdf_id = generate_district_policy_brief_pdf(
+        profile, spatial_context=spillover_res, lang="id", radar_fig=radar_fig
+    )
     assert isinstance(pdf_id, bytes)
     assert pdf_id.startswith(b"%PDF-")
     reader_id = pypdf.PdfReader(io.BytesIO(pdf_id))
     assert len(reader_id.pages) == 1, f"Expected strictly 1 page, got {len(reader_id.pages)}"
 
-    # 2. English locale with dictionary representation
-    pdf_en = generate_district_policy_brief_pdf(profile.to_dict(), spatial_context=spillover_res, lang="en")
+    # Verify extracted text contains localized status and indicators
+    extracted_text_id = reader_id.pages[0].extract_text()
+    assert "Simeulue" in extracted_text_id
+    assert any(term in extracted_text_id for term in ["Tertinggal", "Di Bawah Median", "Cukup Baik"])
+
+    # 2. English locale with dictionary representation and embedded radar figure
+    pdf_en = generate_district_policy_brief_pdf(
+        profile.to_dict(), spatial_context=spillover_res, lang="en", radar_fig=radar_fig
+    )
     assert isinstance(pdf_en, bytes)
     assert pdf_en.startswith(b"%PDF-")
     reader_en = pypdf.PdfReader(io.BytesIO(pdf_en))
     assert len(reader_en.pages) == 1, f"Expected strictly 1 page, got {len(reader_en.pages)}"
+
+    extracted_text_en = reader_en.pages[0].extract_text()
+    assert "Simeulue" in extracted_text_en
+    assert any(term in extracted_text_en for term in ["Deficit", "Below Median", "Adequate"])
