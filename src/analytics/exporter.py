@@ -420,143 +420,163 @@ def _normalize_spatial_context(spatial_input: Optional[Union[Dict[str, Any], Spi
     }
 
 
-def _build_radar_chart_figure(p_data: Dict[str, Any], is_id: bool = True) -> Any:
-    """Construct Plotly polar radar chart comparing district to national and corridor medians."""
-    import plotly.graph_objects as go
-
-    inds = ["EWS", "RAMBU", "PERKAP", "RAWAT_SUNGAI", "GOTONG_ROYONG", "SINYAL_BURUK", "IPM"]
-    raw_inds = p_data.get("indicators", {})
-    kab_kota = p_data.get("kab_kota", "District")
-    corridor = p_data.get("corridor", "National")
-
-    district_vals, corr_medians, nat_medians = [], [], []
-    for k in inds:
-        m = _extract_metric_info(raw_inds.get(k))
-        district_vals.append(m["value"])
-        corr_medians.append(m["corridor_median"])
-        nat_medians.append(m["national_median"])
-
-    # Close polar loop
-    theta_labels = inds + [inds[0]]
-    d_v = district_vals + [district_vals[0]]
-    c_m = corr_medians + [corr_medians[0]]
-    n_m = nat_medians + [nat_medians[0]]
-
-    fig = go.Figure()
-    fig.add_trace(go.Scatterpolar(
-        r=d_v, theta=theta_labels, fill="toself", name=kab_kota,
-        line=dict(color="#0284c7", width=2.5), fillcolor="rgba(2, 132, 199, 0.20)",
-    ))
-    fig.add_trace(go.Scatterpolar(
-        r=c_m, theta=theta_labels, fill="toself",
-        name=f"Median Wilayah Kepulauan ({corridor})" if is_id else f"{corridor} Regional Median",
-        line=dict(color="#f59e0b", width=1.8, dash="dot"), fillcolor="rgba(245, 158, 11, 0.05)",
-    ))
-    fig.add_trace(go.Scatterpolar(
-        r=n_m, theta=theta_labels, fill="toself",
-        name="Median Nasional" if is_id else "National Median",
-        line=dict(color="#64748b", width=1.5, dash="dash"), fillcolor="rgba(100, 116, 139, 0.05)",
-    ))
-    fig.update_layout(
-        paper_bgcolor="#ffffff", plot_bgcolor="#ffffff",
-        font=dict(color="#0f172a", family="Helvetica, Arial, sans-serif"),
-        polar=dict(
-            bgcolor="#ffffff",
-            radialaxis=dict(
-                visible=True,
-                range=[0, 100],
-                gridcolor="#e2e8f0",
-                linecolor="#cbd5e1",
-                tickfont=dict(color="#64748b", size=7),
-            ),
-            angularaxis=dict(
-                gridcolor="#e2e8f0",
-                linecolor="#0f172a",
-                tickfont=dict(color="#0f172a", size=7.5),
-            ),
-        ),
-        legend=dict(
-            orientation="h",
-            yanchor="bottom",
-            y=-0.22,
-            xanchor="center",
-            x=0.5,
-            font=dict(color="#334155", size=8),
-            bgcolor="rgba(0,0,0,0)",
-        ),
-        margin=dict(l=15, r=15, t=10, b=10),
-        showlegend=True,
-    )
-    return fig
-
-
-def _render_radar_chart_html(
-    radar_fig: Optional[Any],
-    p_data: Dict[str, Any],
-    is_id: bool = True,
-    width: int = 440,
-    height: int = 210,
-) -> str:
-    """Safely convert Plotly radar figure to inline vector SVG or fallback container."""
-    fig = radar_fig
-    if fig is None:
-        try:
-            fig = _build_radar_chart_figure(p_data, is_id=is_id)
-        except Exception:
-            fig = None
-
-    if fig is not None:
-        try:
-            import copy
-            import base64
-            r_fig = copy.deepcopy(fig)
-            r_fig.update_layout(
-                paper_bgcolor="#ffffff",
-                plot_bgcolor="#ffffff",
-                font=dict(color="#0f172a", family="Helvetica, Arial, sans-serif"),
-                margin=dict(l=15, r=15, t=10, b=10),
-                showlegend=True,
-                legend=dict(
-                    orientation="h",
-                    yanchor="bottom",
-                    y=-0.22,
-                    xanchor="center",
-                    x=0.5,
-                    font=dict(size=7.5, color="#334155"),
-                ),
-            )
-            if hasattr(r_fig.layout, "polar") and r_fig.layout.polar is not None:
-                r_fig.layout.polar.bgcolor = "#ffffff"
-                if hasattr(r_fig.layout.polar, "radialaxis"):
-                    r_fig.layout.polar.radialaxis.tickfont = dict(size=6.5, color="#64748b")
-                if hasattr(r_fig.layout.polar, "angularaxis"):
-                    r_fig.layout.polar.angularaxis.tickfont = dict(size=7, color="#0f172a")
-
-            # Preferred format: SVG string for superior vector sharpness in WeasyPrint
-            try:
-                svg_bytes = r_fig.to_image(format="svg", width=width, height=height)
-                svg_b64 = base64.b64encode(svg_bytes).decode("utf-8")
-                return f'<img src="data:image/svg+xml;base64,{svg_b64}" class="radar-img" />'
-            except Exception:
-                # Fallback format: PNG base64
-                png_bytes = r_fig.to_image(format="png", width=width, height=height, scale=2)
-                png_b64 = base64.b64encode(png_bytes).decode("utf-8")
-                return f'<img src="data:image/png;base64,{png_b64}" class="radar-img" width="220" />'
-        except Exception:
-            pass
-
-    # Graceful fallback SVG notice container
-    notice_text = (
-        "Grafik radar kesiapsiagaan aktif di portal interaktif"
-        if is_id
-        else "Resilience radar visualization active in interactive dashboard"
-    )
-    return f"""<svg width="240" height="75" viewBox="0 0 240 75" xmlns="http://www.w3.org/2000/svg">
-      <rect width="240" height="75" rx="4" fill="#f8fafc" stroke="#e2e8f0" stroke-width="1"/>
-      <circle cx="120" cy="35" r="22" fill="none" stroke="#cbd5e1" stroke-width="1" stroke-dasharray="2,2"/>
-      <polygon points="120,18 138,32 131,50 109,50 102,32" fill="rgba(2,132,199,0.15)" stroke="#0284c7" stroke-width="1.5"/>
-      <text x="120" y="65" text-anchor="middle" font-family="'Helvetica Neue', Helvetica, sans-serif" font-size="7" fill="#64748b">{notice_text}</text>
-    </svg>"""
+def _get_policy_brief_pdf_css() -> str:
+    """Return uniform CSS styling for single-page A4 policy brief PDF exports."""
+    return """
+    @page {
+      size: A4 portrait;
+      margin: 18mm 20mm 18mm 20mm;
+      @bottom-right {
+        content: counter(page) " / " counter(pages);
+        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        font-size: 8pt;
+        color: #64748b;
+      }
+      @bottom-left {
+        content: "Indonesian Disaster Readiness & Gap Explorer (IDR-GE) • BPS PODES & BNPB IRBI 2024";
+        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+        font-size: 8pt;
+        color: #64748b;
+      }
+    }
+    *, *::before, *::after {
+      box-sizing: border-box;
+    }
+    body {
+      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      font-size: 8.5pt;
+      line-height: 1.35;
+      color: #1e293b;
+      margin: 0;
+      padding: 0;
+      width: 100%;
+    }
+    .header {
+      border-bottom: 2px solid #0284c7;
+      padding-bottom: 3px;
+      margin-bottom: 6px;
+    }
+    .title {
+      font-size: 14pt;
+      font-weight: 800;
+      color: #0f172a;
+      margin: 0;
+    }
+    .subtitle {
+      font-size: 9.5pt;
+      color: #475569;
+      margin: 2px 0 0 0;
+    }
+    .meta-strip {
+      width: 100%;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 4px;
+      padding: 4px 8px;
+      margin-bottom: 6px;
+      font-size: 8pt;
+    }
+    .grid-4 {
+      display: table;
+      width: 100%;
+      margin-bottom: 6px;
+      table-layout: fixed;
+    }
+    .card {
+      display: table-cell;
+      width: 25%;
+      background: #f8fafc;
+      border: 1px solid #e2e8f0;
+      border-radius: 4px;
+      padding: 4px 6px;
+      text-align: center;
+    }
+    .card-label {
+      font-size: 7.2pt;
+      color: #64748b;
+      font-weight: 700;
+      text-transform: uppercase;
+    }
+    .card-val {
+      font-size: 12.5pt;
+      font-weight: 800;
+      margin-top: 2px;
+    }
+    .subtext-box {
+      width: 100%;
+      font-size: 7.5pt;
+      color: #475569;
+      margin-bottom: 6px;
+      padding: 3px 8px;
+      background: #fff7ed;
+      border: 1px solid #ffedd5;
+      border-radius: 3px;
+    }
+    .section-title {
+      font-size: 8.8pt;
+      font-weight: 800;
+      color: #0f172a;
+      margin: 6px 0 3px 0;
+      border-bottom: 1px solid #e2e8f0;
+      padding-bottom: 2px;
+      text-transform: uppercase;
+      letter-spacing: 0.3px;
+    }
+    table.data-table, table.diag-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 8.5pt;
+      margin-bottom: 6px;
+    }
+    table.data-table th, table.diag-table th {
+      background: #f1f5f9;
+      color: #334155;
+      font-weight: 700;
+      font-size: 8pt;
+      padding: 4.5px 6px;
+      border-bottom: 1px solid #cbd5e1;
+    }
+    table.data-table td, table.diag-table td {
+      padding: 4.5px 6px;
+      border-bottom: 1px solid #f1f5f9;
+      color: #1e293b;
+    }
+    .spill-box {
+      width: 100%;
+      background: #f0fdf4;
+      border: 1px solid #bbf7d0;
+      border-radius: 4px;
+      padding: 4px 8px;
+      margin-bottom: 6px;
+      font-size: 8pt;
+    }
+    .recs {
+      margin: 0;
+      padding-left: 16px;
+      font-size: 8.5pt;
+      line-height: 1.35;
+      margin-bottom: 6px;
+    }
+    .recs li {
+      margin-bottom: 2px;
+    }
+    .badge {
+      display: inline-block;
+      padding: 1px 4px;
+      border-radius: 2px;
+      font-size: 7pt;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+    .footnote {
+      font-size: 7.5pt;
+      color: #64748b;
+      text-align: center;
+      border-top: 1px dashed #cbd5e1;
+      padding-top: 5px;
+      margin-top: 8px;
+    }
+    """
 
 
 def generate_district_policy_brief_pdf(
@@ -748,75 +768,18 @@ def generate_district_policy_brief_pdf(
     ]
     recs_html = "".join(f"<li>{r}</li>" for r in recs)
 
+    _ = radar_fig  # Preserved in signature for caller compatibility
     footnote = (
         "Disintesis dari Data BPS PODES 2024 dan BNPB IRBI 2024. Model SAR (2SLS GM-Lag) k-NN (k=5)."
         if is_id
         else "Synthesized from BPS PODES 2024 and BNPB IRBI 2024. SAR Specification (2SLS GM-Lag) k-NN (k=5)."
     )
 
-    css = """
-    @page {
-      size: A4 portrait;
-      margin: 16mm 18mm 16mm 18mm;
-      @bottom-right {
-        content: counter(page) " / " counter(pages);
-        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-        font-size: 7pt;
-        color: #64748b;
-      }
-      @bottom-left {
-        content: "Indonesian Disaster Readiness & Gap Explorer (IDR-GE) • BPS PODES & BNPB IRBI 2024";
-        font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-        font-size: 7pt;
-        color: #64748b;
-      }
-    }
-    *, *::before, *::after { box-sizing: border-box; }
-    body {
-      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-      font-size: 9.8pt;
-      line-height: 1.32;
-      color: #1e293b;
-      margin: 0; padding: 0;
-    }
-    .header { border-bottom: 2px solid #0284c7; padding-bottom: 2px; margin-bottom: 3.5px; }
-    .title { font-size: 14.5pt; font-weight: 800; color: #0f172a; margin: 0; }
-    .subtitle { font-size: 10pt; color: #475569; margin: 1px 0 0 0; }
-    .meta-strip { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 3px; padding: 2.5px 6px; margin-bottom: 3.5px; font-size: 8.2pt; }
-    .grid-4 { display: table; width: 100%; margin-bottom: 3.5px; }
-    .card { display: table-cell; width: 25%; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 3px; padding: 2.5px 4px; text-align: center; }
-    .card-label { font-size: 7.2pt; color: #64748b; font-weight: 700; text-transform: uppercase; }
-    .card-val { font-size: 12.5pt; font-weight: 800; margin-top: 1px; }
-    .subtext-box { font-size: 8.2pt; color: #475569; margin-bottom: 3.5px; padding: 2px 6px; background: #fff7ed; border: 1px solid #ffedd5; border-radius: 2px; }
-    .section-title { font-size: 8.8pt; font-weight: 800; color: #0f172a; margin: 3px 0 1.5px 0; border-bottom: 1px solid #e2e8f0; padding-bottom: 1px; text-transform: uppercase; letter-spacing: 0.3px; }
-    table.diag-table { width: 100%; border-collapse: collapse; font-size: 8.8pt; margin-bottom: 3px; }
-    table.diag-table th { background: #f1f5f9; color: #334155; font-weight: 700; font-size: 8.5pt; padding: 1.5px 3.5px; border-bottom: 1px solid #cbd5e1; }
-    table.diag-table td { padding: 1.5px 3.5px; border-bottom: 1px solid #f1f5f9; color: #1e293b; }
-    .spill-box { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 3px; padding: 2.5px 6px; margin-bottom: 3.5px; font-size: 8.2pt; }
-    .recs { margin: 0; padding-left: 14px; font-size: 9pt; line-height: 1.25; margin-bottom: 2.5px; }
-    .recs li { margin-bottom: 1px; }
-    .badge { display: inline-block; padding: 0.5px 3.5px; border-radius: 2px; font-size: 6.8pt; font-weight: 700; white-space: nowrap; }
-    .chart-container { text-align: center; margin-top: 1.5px; padding: 1px; border: 1px solid #e2e8f0; border-radius: 3px; background: #ffffff; }
-    .radar-img { max-width: 240px; max-height: 110px; object-fit: contain; }
-    .footnote { font-size: 7pt; color: #94a3b8; text-align: center; margin-top: 2px; }
-    """
+    css = _get_policy_brief_pdf_css()
 
     lbl_spill_rho = "Parameter Spasial Lag (ρ)" if is_id else "Spatial Lag Parameter (ρ)"
     lbl_spill_mult = "Multiplier Lintas Batas" if is_id else "Cross-Border Multiplier"
     lbl_spill_share = "Rasio Rembesan" if is_id else "Spillover Share"
-
-    radar_title = (
-        "Tolok Ukur Radar Kesiapsiagaan Desa (PODES 2024 vs Wilayah Kepulauan & Nasional)"
-        if is_id
-        else "Village Resilience Radar Diagnostic (PODES 2024 vs Region & National)"
-    )
-
-    chart_html = _render_radar_chart_html(radar_fig, p_data, is_id=is_id)
-    chart_section = f"""\
-      <div class="section-title">{radar_title}</div>
-      <div class="chart-container">
-        {chart_html}
-      </div>"""
 
     html = textwrap.dedent(f"""\
     <!DOCTYPE html>
@@ -852,12 +815,12 @@ def generate_district_policy_brief_pdf(
         <thead>
           <tr>
             <th style="width:8%; text-align:center;">{cols[0]}</th>
-            <th style="width:28%; text-align:left;">{cols[1]}</th>
+            <th style="width:30%; text-align:left;">{cols[1]}</th>
             <th style="width:12%; text-align:center;">{cols[2]}</th>
-            <th style="width:13%; text-align:center;">{cols[3]}</th>
+            <th style="width:12%; text-align:center;">{cols[3]}</th>
             <th style="width:13%; text-align:center;">{cols[4]}</th>
             <th style="width:11%; text-align:center;">{cols[5]}</th>
-            <th style="width:15%; text-align:center;">{cols[6]}</th>
+            <th style="width:14%; text-align:center;">{cols[6]}</th>
           </tr>
         </thead>
         <tbody>
@@ -873,7 +836,7 @@ def generate_district_policy_brief_pdf(
             <td style="border:none; padding:0; text-align:right;"><b>{lbl_spill_share}:</b> {spill['spillover_ratio']:.1f}%</td>
           </tr>
         </table>
-        <div style="font-size:6.5pt; color:#166534;">
+        <div style="font-size:7pt; color:#166534; margin-top:2px;">
           {spill_desc}
         </div>
       </div>
@@ -881,7 +844,6 @@ def generate_district_policy_brief_pdf(
       <ol class="recs">
         {recs_html}
       </ol>
-      {chart_section}
       <div class="footnote">
         {footnote}
       </div>
@@ -1141,59 +1103,14 @@ def generate_provincial_policy_brief_pdf(
     ]
     recs_html = "".join(f"<li>{r}</li>" for r in recs)
 
-    radar_title = (
-        f"Tolok Ukur Radar Kesiapsiagaan Provinsi ({prov_name} vs Wilayah Kepulauan & Nasional)"
-        if is_id
-        else f"Provincial Resilience Radar Benchmark ({prov_name} vs Region & National)"
-    )
-    chart_html = _render_radar_chart_html(radar_fig, p, is_id=is_id)
-    chart_section = f"""\
-      <div class="section-title">{radar_title}</div>
-      <div class="chart-container">
-        {chart_html}
-      </div>"""
-
+    _ = radar_fig  # Preserved in signature for caller compatibility
     footnote = (
         "Disintesis dari Data BPS PODES 2024 dan BNPB IRBI 2024. Agregasi Tingkat Provinsi IDR-GE."
         if is_id
         else "Synthesized from BPS PODES 2024 and BNPB IRBI 2024. IDR-GE Provincial Spatial Aggregation."
     )
 
-    css = """
-    @page {
-      size: A4 portrait;
-      margin: 16mm 18mm 16mm 18mm;
-      @bottom-right { content: counter(page) " / " counter(pages); font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 7pt; color: #64748b; }
-      @bottom-left { content: "Indonesian Disaster Readiness & Gap Explorer (IDR-GE) • BPS PODES & BNPB IRBI 2024"; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 7pt; color: #64748b; }
-    }
-    *, *::before, *::after { box-sizing: border-box; }
-    body {
-      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-      font-size: 9.8pt;
-      line-height: 1.32;
-      color: #1e293b;
-      margin: 0; padding: 0;
-    }
-    .header { border-bottom: 2px solid #0284c7; padding-bottom: 2px; margin-bottom: 3.5px; }
-    .title { font-size: 14.5pt; font-weight: 800; color: #0f172a; margin: 0; }
-    .subtitle { font-size: 10pt; color: #475569; margin: 1px 0 0 0; }
-    .meta-strip { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 3px; padding: 2.5px 6px; margin-bottom: 3.5px; font-size: 8.2pt; }
-    .grid-4 { display: table; width: 100%; margin-bottom: 3.5px; }
-    .card { display: table-cell; width: 25%; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 3px; padding: 2.5px 4px; text-align: center; }
-    .card-label { font-size: 7.2pt; color: #64748b; font-weight: 700; text-transform: uppercase; }
-    .card-val { font-size: 12.5pt; font-weight: 800; margin-top: 1px; }
-    .subtext-box { font-size: 8.2pt; color: #475569; margin-bottom: 3.5px; padding: 2px 6px; background: #fff7ed; border: 1px solid #ffedd5; border-radius: 2px; }
-    .section-title { font-size: 8.8pt; font-weight: 800; color: #0f172a; margin: 3px 0 1.5px 0; border-bottom: 1px solid #e2e8f0; padding-bottom: 1px; text-transform: uppercase; letter-spacing: 0.3px; }
-    table.data-table { width: 100%; border-collapse: collapse; font-size: 8.8pt; margin-bottom: 3px; }
-    table.data-table th { background: #f1f5f9; color: #334155; font-weight: 700; font-size: 8.5pt; padding: 1.5px 3.5px; border-bottom: 1px solid #cbd5e1; }
-    table.data-table td { padding: 1.5px 3.5px; border-bottom: 1px solid #f1f5f9; color: #1e293b; }
-    .recs { margin: 0; padding-left: 14px; font-size: 9pt; line-height: 1.25; margin-bottom: 2.5px; }
-    .recs li { margin-bottom: 1px; }
-    .badge { display: inline-block; padding: 0.5px 3.5px; border-radius: 2px; font-size: 6.8pt; font-weight: 700; white-space: nowrap; }
-    .chart-container { text-align: center; margin-top: 1.5px; padding: 1px; border: 1px solid #e2e8f0; border-radius: 3px; background: #ffffff; }
-    .radar-img { max-width: 240px; max-height: 110px; object-fit: contain; }
-    .footnote { font-size: 7pt; color: #94a3b8; text-align: center; margin-top: 2px; }
-    """
+    css = _get_policy_brief_pdf_css()
 
     html = textwrap.dedent(f"""\
     <!DOCTYPE html>
@@ -1230,11 +1147,11 @@ def generate_provincial_policy_brief_pdf(
           <tr>
             <th style="width:8%; text-align:center;">{th_code}</th>
             <th style="width:27%; text-align:left;">{th_dist}</th>
-            <th style="width:14%; text-align:center;">{th_rk}</th>
-            <th style="width:14%; text-align:center;">{th_mk}</th>
-            <th style="width:17%; text-align:center;">{th_bal}</th>
-            <th style="width:10%; text-align:center;">{th_ad}</th>
-            <th style="width:10%; text-align:center;">{th_stat}</th>
+            <th style="width:13%; text-align:center;">{th_rk}</th>
+            <th style="width:13%; text-align:center;">{th_mk}</th>
+            <th style="width:16%; text-align:center;">{th_bal}</th>
+            <th style="width:11%; text-align:center;">{th_ad}</th>
+            <th style="width:12%; text-align:center;">{th_stat}</th>
           </tr>
         </thead>
         <tbody>
@@ -1260,7 +1177,6 @@ def generate_provincial_policy_brief_pdf(
       <ol class="recs">
         {recs_html}
       </ol>
-      {chart_section}
       <div class="footnote">
         {footnote}
       </div>
@@ -1419,59 +1335,14 @@ def generate_regional_policy_brief_pdf(
     ]
     recs_html = "".join(f"<li>{r}</li>" for r in recs)
 
-    radar_title = (
-        f"Tolok Ukur Radar Kesiapsiagaan Wilayah ({reg_name} vs Nasional)"
-        if is_id
-        else f"Regional Resilience Radar Benchmark ({reg_name} vs National)"
-    )
-    chart_html = _render_radar_chart_html(radar_fig, p, is_id=is_id)
-    chart_section = f"""\
-      <div class="section-title">{radar_title}</div>
-      <div class="chart-container">
-        {chart_html}
-      </div>"""
-
+    _ = radar_fig  # Preserved in signature for caller compatibility
     footnote = (
         "Disintesis dari Data BPS PODES 2024 dan BNPB IRBI 2024. Agregasi Tingkat Wilayah Kepulauan IDR-GE."
         if is_id
         else "Synthesized from BPS PODES 2024 and BNPB IRBI 2024. IDR-GE Regional Spatial Aggregation."
     )
 
-    css = """
-    @page {
-      size: A4 portrait;
-      margin: 16mm 18mm 16mm 18mm;
-      @bottom-right { content: counter(page) " / " counter(pages); font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 7pt; color: #64748b; }
-      @bottom-left { content: "Indonesian Disaster Readiness & Gap Explorer (IDR-GE) • BPS PODES & BNPB IRBI 2024"; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 7pt; color: #64748b; }
-    }
-    *, *::before, *::after { box-sizing: border-box; }
-    body {
-      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-      font-size: 9.8pt;
-      line-height: 1.32;
-      color: #1e293b;
-      margin: 0; padding: 0;
-    }
-    .header { border-bottom: 2px solid #0284c7; padding-bottom: 2px; margin-bottom: 3.5px; }
-    .title { font-size: 14.5pt; font-weight: 800; color: #0f172a; margin: 0; }
-    .subtitle { font-size: 10pt; color: #475569; margin: 1px 0 0 0; }
-    .meta-strip { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 3px; padding: 2.5px 6px; margin-bottom: 3.5px; font-size: 8.2pt; }
-    .grid-4 { display: table; width: 100%; margin-bottom: 3.5px; }
-    .card { display: table-cell; width: 25%; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 3px; padding: 2.5px 4px; text-align: center; }
-    .card-label { font-size: 7.2pt; color: #64748b; font-weight: 700; text-transform: uppercase; }
-    .card-val { font-size: 12.5pt; font-weight: 800; margin-top: 1px; }
-    .subtext-box { font-size: 8.2pt; color: #475569; margin-bottom: 3.5px; padding: 2px 6px; background: #fff7ed; border: 1px solid #ffedd5; border-radius: 2px; }
-    .section-title { font-size: 8.8pt; font-weight: 800; color: #0f172a; margin: 3px 0 1.5px 0; border-bottom: 1px solid #e2e8f0; padding-bottom: 1px; text-transform: uppercase; letter-spacing: 0.3px; }
-    table.data-table { width: 100%; border-collapse: collapse; font-size: 8.8pt; margin-bottom: 3px; }
-    table.data-table th { background: #f1f5f9; color: #334155; font-weight: 700; font-size: 8.5pt; padding: 1.5px 3.5px; border-bottom: 1px solid #cbd5e1; }
-    table.data-table td { padding: 1.5px 3.5px; border-bottom: 1px solid #f1f5f9; color: #1e293b; }
-    .recs { margin: 0; padding-left: 14px; font-size: 9pt; line-height: 1.25; margin-bottom: 2.5px; }
-    .recs li { margin-bottom: 1px; }
-    .badge { display: inline-block; padding: 0.5px 3.5px; border-radius: 2px; font-size: 6.8pt; font-weight: 700; white-space: nowrap; }
-    .chart-container { text-align: center; margin-top: 1.5px; padding: 1px; border: 1px solid #e2e8f0; border-radius: 3px; background: #ffffff; }
-    .radar-img { max-width: 240px; max-height: 110px; object-fit: contain; }
-    .footnote { font-size: 7pt; color: #94a3b8; text-align: center; margin-top: 2px; }
-    """
+    css = _get_policy_brief_pdf_css()
 
     html = textwrap.dedent(f"""\
     <!DOCTYPE html>
@@ -1507,12 +1378,12 @@ def generate_regional_policy_brief_pdf(
         <thead>
           <tr>
             <th style="width:8%; text-align:center;">{th_code}</th>
-            <th style="width:25%; text-align:left;">{th_dist}</th>
-            <th style="width:15%; text-align:left;">{th_prov}</th>
-            <th style="width:13%; text-align:center;">{th_rk}</th>
-            <th style="width:13%; text-align:center;">{th_mk}</th>
-            <th style="width:15%; text-align:center;">{th_bal}</th>
-            <th style="width:11%; text-align:center;">{th_stat}</th>
+            <th style="width:26%; text-align:left;">{th_dist}</th>
+            <th style="width:16%; text-align:left;">{th_prov}</th>
+            <th style="width:12%; text-align:center;">{th_rk}</th>
+            <th style="width:12%; text-align:center;">{th_mk}</th>
+            <th style="width:14%; text-align:center;">{th_bal}</th>
+            <th style="width:12%; text-align:center;">{th_stat}</th>
           </tr>
         </thead>
         <tbody>
@@ -1538,7 +1409,6 @@ def generate_regional_policy_brief_pdf(
       <ol class="recs">
         {recs_html}
       </ol>
-      {chart_section}
       <div class="footnote">
         {footnote}
       </div>
@@ -1690,59 +1560,14 @@ def generate_national_policy_brief_pdf(
     ]
     recs_html = "".join(f"<li>{r}</li>" for r in recs)
 
-    radar_title = (
-        "Tolok Ukur Radar Kesiapsiagaan Rerata Nasional (PODES 2024)"
-        if is_id
-        else "National Average Resilience Radar Diagnostic (PODES 2024)"
-    )
-    chart_html = _render_radar_chart_html(radar_fig, p, is_id=is_id)
-    chart_section = f"""\
-      <div class="section-title">{radar_title}</div>
-      <div class="chart-container">
-        {chart_html}
-      </div>"""
-
+    _ = radar_fig  # Preserved in signature for caller compatibility
     footnote = (
         "Disintesis dari Data BPS PODES 2024 dan BNPB IRBI 2024. Agregasi Tingkat Nasional IDR-GE."
         if is_id
         else "Synthesized from BPS PODES 2024 and BNPB IRBI 2024. IDR-GE National Spatial Aggregation."
     )
 
-    css = """
-    @page {
-      size: A4 portrait;
-      margin: 16mm 18mm 16mm 18mm;
-      @bottom-right { content: counter(page) " / " counter(pages); font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 7pt; color: #64748b; }
-      @bottom-left { content: "Indonesian Disaster Readiness & Gap Explorer (IDR-GE) • BPS PODES & BNPB IRBI 2024"; font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif; font-size: 7pt; color: #64748b; }
-    }
-    *, *::before, *::after { box-sizing: border-box; }
-    body {
-      font-family: 'Helvetica Neue', Helvetica, Arial, sans-serif;
-      font-size: 9.8pt;
-      line-height: 1.32;
-      color: #1e293b;
-      margin: 0; padding: 0;
-    }
-    .header { border-bottom: 2px solid #0284c7; padding-bottom: 2px; margin-bottom: 3.5px; }
-    .title { font-size: 14.5pt; font-weight: 800; color: #0f172a; margin: 0; }
-    .subtitle { font-size: 10pt; color: #475569; margin: 1px 0 0 0; }
-    .meta-strip { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 3px; padding: 2.5px 6px; margin-bottom: 3.5px; font-size: 8.2pt; }
-    .grid-4 { display: table; width: 100%; margin-bottom: 3.5px; }
-    .card { display: table-cell; width: 25%; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 3px; padding: 2.5px 4px; text-align: center; }
-    .card-label { font-size: 7.2pt; color: #64748b; font-weight: 700; text-transform: uppercase; }
-    .card-val { font-size: 12.5pt; font-weight: 800; margin-top: 1px; }
-    .subtext-box { font-size: 8.2pt; color: #475569; margin-bottom: 3.5px; padding: 2px 6px; background: #fff7ed; border: 1px solid #ffedd5; border-radius: 2px; }
-    .section-title { font-size: 8.8pt; font-weight: 800; color: #0f172a; margin: 3px 0 1.5px 0; border-bottom: 1px solid #e2e8f0; padding-bottom: 1px; text-transform: uppercase; letter-spacing: 0.3px; }
-    table.data-table { width: 100%; border-collapse: collapse; font-size: 8.8pt; margin-bottom: 3px; }
-    table.data-table th { background: #f1f5f9; color: #334155; font-weight: 700; font-size: 8.5pt; padding: 1.5px 3.5px; border-bottom: 1px solid #cbd5e1; }
-    table.data-table td { padding: 1.5px 3.5px; border-bottom: 1px solid #f1f5f9; color: #1e293b; }
-    .recs { margin: 0; padding-left: 14px; font-size: 9pt; line-height: 1.25; margin-bottom: 2.5px; }
-    .recs li { margin-bottom: 1px; }
-    .badge { display: inline-block; padding: 0.5px 3.5px; border-radius: 2px; font-size: 6.8pt; font-weight: 700; white-space: nowrap; }
-    .chart-container { text-align: center; margin-top: 1.5px; padding: 1px; border: 1px solid #e2e8f0; border-radius: 3px; background: #ffffff; }
-    .radar-img { max-width: 240px; max-height: 110px; object-fit: contain; }
-    .footnote { font-size: 7pt; color: #94a3b8; text-align: center; margin-top: 2px; }
-    """
+    css = _get_policy_brief_pdf_css()
 
     html = textwrap.dedent(f"""\
     <!DOCTYPE html>
@@ -1778,12 +1603,12 @@ def generate_national_policy_brief_pdf(
         <thead>
           <tr>
             <th style="width:8%; text-align:center;">{th_code}</th>
-            <th style="width:25%; text-align:left;">{th_dist}</th>
-            <th style="width:15%; text-align:left;">{th_prov}</th>
-            <th style="width:13%; text-align:center;">{th_rk}</th>
-            <th style="width:13%; text-align:center;">{th_mk}</th>
-            <th style="width:15%; text-align:center;">{th_bal}</th>
-            <th style="width:11%; text-align:center;">{th_stat}</th>
+            <th style="width:26%; text-align:left;">{th_dist}</th>
+            <th style="width:16%; text-align:left;">{th_prov}</th>
+            <th style="width:12%; text-align:center;">{th_rk}</th>
+            <th style="width:12%; text-align:center;">{th_mk}</th>
+            <th style="width:14%; text-align:center;">{th_bal}</th>
+            <th style="width:12%; text-align:center;">{th_stat}</th>
           </tr>
         </thead>
         <tbody>
@@ -1808,82 +1633,6 @@ def generate_national_policy_brief_pdf(
       <ol class="recs">
         {recs_html}
       </ol>
-      {chart_section}
-      <div class="footnote">
-        {footnote}
-      </div>
-    </body>
-    </html>
-    """).strip()
-
-    return weasyprint.HTML(string=html).write_pdf()
-
-    html = textwrap.dedent(f"""\
-    <!DOCTYPE html>
-    <html>
-    <head>
-      <meta charset="utf-8">
-      <style>{css}</style>
-    </head>
-    <body>
-      <div class="header">
-        <div class="title">{doc_title}</div>
-        <div class="subtitle">{doc_subtitle}</div>
-      </div>
-      <div class="meta-strip">
-        <table style="width:100%; border-collapse:collapse;">
-          <tr>
-            <td style="border:none; padding:0;"><b>{lbl_prov}:</b> {prov_name} | <b>{lbl_corr}:</b> {corridor} | <b>{lbl_total}:</b> {total_units}</td>
-            <td style="border:none; padding:0; text-align:right;"><b>{lbl_crit}:</b> {critical_count} ({critical_share_pct}%) | <b>{lbl_rank}:</b> #{gap_rank} {lbl_of}</td>
-          </tr>
-        </table>
-      </div>
-      <div class="grid-4">
-        <div class="card"><div class="card-label">{lbl_risk}</div><div class="card-val" style="color:#b91c1c;">{risk_score:.3f}</div></div>
-        <div class="card"><div class="card-label">{lbl_mit}</div><div class="card-val" style="color:#0284c7;">{mitigation_score:.3f}</div></div>
-        <div class="card"><div class="card-label">{lbl_bal}</div><div class="card-val" style="color:{bal_color};">{readiness_balance:+.3f}</div></div>
-        <div class="card"><div class="card-label">{lbl_ad}</div><div class="card-val" style="color:{ad_color};">{adequacy_ratio:.1f}%</div></div>
-      </div>
-      <div class="subtext-box">
-        <b>{subtext}</b>
-      </div>
-      <div class="section-title">{top_title}</div>
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th style="width:8%; text-align:center;">{th_code}</th>
-            <th style="width:27%; text-align:left;">{th_dist}</th>
-            <th style="width:14%; text-align:center;">{th_rk}</th>
-            <th style="width:14%; text-align:center;">{th_mk}</th>
-            <th style="width:17%; text-align:center;">{th_bal}</th>
-            <th style="width:10%; text-align:center;">{th_ad}</th>
-            <th style="width:10%; text-align:center;">{th_stat}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {top5_rows}
-        </tbody>
-      </table>
-      <div class="section-title">{ind_title}</div>
-      <table class="data-table">
-        <thead>
-          <tr>
-            <th style="width:36%; text-align:left;">{th_ind}</th>
-            <th style="width:16%; text-align:center;">{th_pmean}</th>
-            <th style="width:16%; text-align:center;">{th_nmed}</th>
-            <th style="width:16%; text-align:center;">{th_cmed}</th>
-            <th style="width:16%; text-align:center;">{th_stat}</th>
-          </tr>
-        </thead>
-        <tbody>
-          {inds_rows}
-        </tbody>
-      </table>
-      <div class="section-title">{recs_title}</div>
-      <ol class="recs">
-        {recs_html}
-      </ol>
-      {chart_section}
       <div class="footnote">
         {footnote}
       </div>
