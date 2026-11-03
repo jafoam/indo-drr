@@ -77,12 +77,12 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "id": "Mobilisasi Gotong Royong",
     },
     "regional_corridor": {
-        "en": "Regional Corridor",
-        "id": "Koridor Wilayah / Pulau",
+        "en": "Region",
+        "id": "Wilayah Kepulauan",
     },
     "national_all_corridors": {
-        "en": "National (All 7 Corridors)",
-        "id": "Nasional (Semua 7 Koridor)",
+        "en": "National (All 7 Regions)",
+        "id": "Nasional (Semua 7 Wilayah Kepulauan)",
     },
     "filter_province": {
         "en": "Filter Province",
@@ -129,16 +129,24 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "id": "Jumlah Wilayah",
     },
     "corridor_meta": {
-        "en": "Corridor",
-        "id": "Koridor",
+        "en": "Region",
+        "id": "Wilayah Kepulauan",
     },
     "topology_meta": {
         "en": "Topology",
         "id": "Topologi",
     },
     "export_corridor_brief": {
-        "en": "Export {corridor} Brief (MD)",
-        "id": "Ekspor Ringkasan {corridor} (MD)",
+        "en": "Export {corridor} Regional Brief (PDF)",
+        "id": "Unduh Ringkasan {corridor} (PDF)",
+    },
+    "download_region_pdf_btn": {
+        "en": "📄 Download Regional Policy Brief (PDF) — {region}",
+        "id": "📄 Unduh Policy Brief Wilayah Kepulauan (PDF) — {region}",
+    },
+    "download_national_pdf_btn": {
+        "en": "📄 Download National Policy Brief (PDF) — Indonesia",
+        "id": "📄 Unduh Policy Brief Nasional (PDF) — Seluruh Indonesia",
     },
 
     # Analytics Panel (Right)
@@ -387,16 +395,16 @@ TRANSLATIONS: Dict[str, Dict[str, str]] = {
         "id": "Melampaui {nat_pct:.0f}% daerah se-Indonesia",
     },
     "bench_outperforms_corr": {
-        "en": "Outperforms {corr_pct:.0f}% across {corridor}",
-        "id": "Melampaui {corr_pct:.0f}% daerah di {corridor}",
+        "en": "Outperforms {corr_pct:.0f}% across {corridor} Region",
+        "id": "Melampaui {corr_pct:.0f}% daerah di Wilayah Kepulauan {corridor}",
     },
     "bench_burden_nat": {
         "en": "Higher burden than {nat_pct:.0f}% of regencies nationally",
         "id": "Tingkat keterbatasan/kerentanan lebih tinggi dari {nat_pct:.0f}% daerah se-Indonesia",
     },
     "bench_burden_corr": {
-        "en": "Higher burden than {corr_pct:.0f}% across {corridor}",
-        "id": "Tingkat keterbatasan/kerentanan lebih tinggi dari {corr_pct:.0f}% daerah di {corridor}",
+        "en": "Higher burden than {corr_pct:.0f}% across {corridor} Region",
+        "id": "Tingkat keterbatasan/kerentanan lebih tinggi dari {corr_pct:.0f}% daerah di Wilayah Kepulauan {corridor}",
     },
     "warn_preparedness_deficit": {
         "en": "Mitigation Insufficient for Severe Risk (Preparedness Deficit)",

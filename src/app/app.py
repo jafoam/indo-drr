@@ -34,13 +34,17 @@ from src.analytics.simulation import (
 )
 from src.analytics.moran import compute_morans_i, compute_lisa
 from src.analytics.profile import compute_regency_profile
-from src.analytics.provincial import compute_provincial_profile
+from src.analytics.provincial import (
+    compute_provincial_profile,
+    compute_regional_profile,
+    compute_national_profile,
+)
 from src.analytics.spillover import estimate_spatial_spillover
 from src.analytics.exporter import (
-    generate_district_policy_brief,
     generate_district_policy_brief_pdf,
     generate_provincial_policy_brief_pdf,
-    generate_corridor_policy_brief,
+    generate_regional_policy_brief_pdf,
+    generate_national_policy_brief_pdf,
 )
 from src.app.components.choropleth import (
     prepare_choropleth_data,
@@ -727,24 +731,44 @@ def main():
     """).strip()
     st.sidebar.markdown(sidebar_meta, unsafe_allow_html=True)
 
+    # National Executive Policy Brief PDF Download Button
+    if selected_corridor == "National (All 7 Corridors)" and not is_specific_province:
+        try:
+            nat_profile = compute_national_profile(gdf)
+            nat_pdf_bytes = generate_national_policy_brief_pdf(
+                nat_profile,
+                lang=lang_code,
+            )
+            st.sidebar.download_button(
+                label=t("download_national_pdf_btn", lang_code),
+                data=nat_pdf_bytes,
+                file_name=f"Policy_Brief_Nasional_Indonesia_{lang_code.upper()}.pdf",
+                mime="application/pdf",
+                key="dl_nat_pdf",
+                use_container_width=True,
+            )
+        except Exception as exc:
+            st.sidebar.caption(f"National brief notice: {exc}")
+
+    # Regional Executive Policy Brief PDF Download Button
     if selected_corridor in CORRIDORS:
         try:
-            side_spill = estimate_spatial_spillover(gdf, corridor=selected_corridor)
-        except Exception:
-            side_spill = None
-        corr_brief_md = generate_corridor_policy_brief(
-            corridor_name=selected_corridor,
-            gdf=gdf,
-            bivariate_df=bivariate_df,
-            spillover_res=side_spill,
-        )
-        st.sidebar.download_button(
-            label=t("export_corridor_brief", lang_code, corridor=selected_corridor),
-            data=corr_brief_md,
-            file_name=f"corridor_brief_{selected_corridor.lower().replace(' ', '_')}.md",
-            mime="text/markdown",
-            use_container_width=True,
-        )
+            reg_profile = compute_regional_profile(gdf, selected_corridor)
+            safe_reg_slug = selected_corridor.lower().replace(" ", "_").replace(".", "").replace("-", "_")
+            reg_pdf_bytes = generate_regional_policy_brief_pdf(
+                reg_profile,
+                lang=lang_code,
+            )
+            st.sidebar.download_button(
+                label=t("download_region_pdf_btn", lang_code, region=selected_corridor),
+                data=reg_pdf_bytes,
+                file_name=f"Policy_Brief_Wilayah_{safe_reg_slug}_{lang_code.upper()}.pdf",
+                mime="application/pdf",
+                key=f"dl_reg_pdf_{safe_reg_slug}",
+                use_container_width=True,
+            )
+        except Exception as exc:
+            st.sidebar.caption(f"Regional brief notice: {exc}")
 
     # Provincial Executive Policy Brief PDF Download Button
     is_specific_province = (
@@ -1082,16 +1106,6 @@ def main():
                 )
             except Exception as exc:
                 st.caption(f"PDF exporter notice: {exc}")
-
-            brief_md = generate_district_policy_brief(profile, spillover_res=insp_spill, lang=active_lang)
-            st.download_button(
-                label=t("download_brief_btn", active_lang, kab=profile.kab_kota),
-                data=brief_md,
-                file_name=f"policy_brief_{profile.kode_wil}_{safe_name}_{active_lang.upper()}.md",
-                mime="text/markdown",
-                key=f"dl_md_{profile.kode_wil}",
-                use_container_width=True,
-            )
         with col_insp_radar:
             st.plotly_chart(radar_fig, use_container_width=True, config={"displayModeBar": False})
 

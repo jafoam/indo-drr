@@ -121,3 +121,179 @@ def compute_provincial_profile(
         "top_bottlenecks": top_bottlenecks,
         "indicators": indicators,
     }
+
+
+def compute_regional_profile(
+    gdf: gpd.GeoDataFrame,
+    region_name: str,
+    bivariate_df: Optional[pd.DataFrame] = None,
+) -> Dict[str, Any]:
+    """Compute aggregated disaster readiness profile for a regional corridor (Wilayah Kepulauan).
+
+    Args:
+        gdf: GeoDataFrame containing 514 districts with risk, mitigation, and indicator scores.
+        region_name: Target region name (matches 'corridor' column, case-insensitive).
+        bivariate_df: Optional DataFrame with bivariate scores if not already attached to gdf.
+
+    Returns:
+        Dict containing regional aggregates, critical unit counts, indicators, and top bottleneck districts.
+    """
+    if "corridor" not in gdf.columns:
+        from src.analytics.corridors import assign_corridors
+        gdf = assign_corridors(gdf)
+
+    matches = gdf[gdf["corridor"].astype(str).str.strip().str.upper() == region_name.strip().upper()]
+    if matches.empty:
+        raise ValueError(f"Region '{region_name}' not found in dataset.")
+
+    canonical_name = str(matches["corridor"].iloc[0])
+    total_units = int(len(matches))
+    provinces = sorted(matches["PROVINSI"].dropna().unique().tolist()) if "PROVINSI" in matches.columns else []
+
+    risk_score = float(matches["risk_score"].mean())
+    mitigation_score = float(matches["mitigation_score"].mean())
+    gap_score = float(risk_score - mitigation_score)
+    readiness_balance = float(mitigation_score - risk_score)
+    adequacy_ratio = float((mitigation_score / risk_score * 100.0) if risk_score > 0 else 100.0)
+
+    crit_mask = matches["bivariate_category"].astype(str).str.contains("R3-M1", na=False)
+    critical_count = int(crit_mask.sum())
+    critical_share_pct = round((critical_count / total_units) * 100.0, 1) if total_units > 0 else 0.0
+
+    # Regional ranking among all 7 regions
+    reg_gaps = gdf.groupby("corridor")["gap_score"].mean().sort_values(ascending=False)
+    try:
+        gap_rank = int(reg_gaps.index.get_loc(canonical_name) + 1)
+    except Exception:
+        gap_rank = 1
+    total_regions = int(len(reg_gaps))
+
+    # Top 5 bottleneck districts within the region
+    top_bottlenecks = []
+    sorted_sub = matches.sort_values(by="gap_score", ascending=False).head(5)
+    for _, row in sorted_sub.iterrows():
+        rk = float(row["risk_score"])
+        mk = float(row["mitigation_score"])
+        gk = float(row.get("gap_score", rk - mk))
+        bal = float(row.get("readiness_balance", mk - rk))
+        ad = float(row.get("adequacy_ratio", (mk / rk * 100.0) if rk > 0 else 100.0))
+        top_bottlenecks.append({
+            "kode_wil": int(row["KODE_WIL"]),
+            "kab_kota": str(row.get("KAB_KOTA", row.get("kab_kota", f"District {row['KODE_WIL']}"))),
+            "provinsi": str(row.get("PROVINSI", "")),
+            "risk_score": rk,
+            "mitigation_score": mk,
+            "gap_score": gk,
+            "readiness_balance": bal,
+            "adequacy_ratio": ad,
+            "bivariate_category": str(row.get("bivariate_category", "R3-M1")),
+        })
+
+    indicators = {}
+    for code in PROFILE_INDICATORS:
+        r_mean = float(matches[code].mean()) if code in matches.columns else 0.0
+        r_med = float(matches[code].median()) if code in matches.columns else 0.0
+        n_med = float(gdf[code].median()) if code in gdf.columns else 0.0
+        indicators[code] = {
+            "value": r_mean,
+            "regional_median": r_med,
+            "corridor_median": r_med,
+            "national_median": n_med,
+            "is_negative": code in NEGATIVE_INDICATORS,
+        }
+
+    return {
+        "region": canonical_name,
+        "corridor": canonical_name,
+        "total_units": total_units,
+        "provinces": provinces,
+        "total_provinces": len(provinces),
+        "risk_score": risk_score,
+        "mitigation_score": mitigation_score,
+        "gap_score": gap_score,
+        "readiness_balance": readiness_balance,
+        "adequacy_ratio": adequacy_ratio,
+        "gap_rank": gap_rank,
+        "total_regions": total_regions,
+        "critical_count": critical_count,
+        "critical_share_pct": critical_share_pct,
+        "top_bottlenecks": top_bottlenecks,
+        "indicators": indicators,
+    }
+
+
+def compute_national_profile(
+    gdf: gpd.GeoDataFrame,
+    bivariate_df: Optional[pd.DataFrame] = None,
+) -> Dict[str, Any]:
+    """Compute aggregated national disaster readiness profile for all 514 districts in Indonesia.
+
+    Args:
+        gdf: GeoDataFrame containing 514 districts.
+        bivariate_df: Optional DataFrame with bivariate scores.
+
+    Returns:
+        Dict containing national aggregates, critical unit counts, indicators, and top bottleneck districts.
+    """
+    total_units = int(len(gdf))
+    provinces = sorted(gdf["PROVINSI"].dropna().unique().tolist()) if "PROVINSI" in gdf.columns else []
+
+    risk_score = float(gdf["risk_score"].mean())
+    mitigation_score = float(gdf["mitigation_score"].mean())
+    gap_score = float(risk_score - mitigation_score)
+    readiness_balance = float(mitigation_score - risk_score)
+    adequacy_ratio = float((mitigation_score / risk_score * 100.0) if risk_score > 0 else 100.0)
+
+    crit_mask = gdf["bivariate_category"].astype(str).str.contains("R3-M1", na=False)
+    critical_count = int(crit_mask.sum())
+    critical_share_pct = round((critical_count / total_units) * 100.0, 1) if total_units > 0 else 0.0
+
+    top_bottlenecks = []
+    sorted_sub = gdf.sort_values(by="gap_score", ascending=False).head(5)
+    for _, row in sorted_sub.iterrows():
+        rk = float(row["risk_score"])
+        mk = float(row["mitigation_score"])
+        gk = float(row.get("gap_score", rk - mk))
+        bal = float(row.get("readiness_balance", mk - rk))
+        ad = float(row.get("adequacy_ratio", (mk / rk * 100.0) if rk > 0 else 100.0))
+        top_bottlenecks.append({
+            "kode_wil": int(row["KODE_WIL"]),
+            "kab_kota": str(row.get("KAB_KOTA", row.get("kab_kota", f"District {row['KODE_WIL']}"))),
+            "provinsi": str(row.get("PROVINSI", "")),
+            "risk_score": rk,
+            "mitigation_score": mk,
+            "gap_score": gk,
+            "readiness_balance": bal,
+            "adequacy_ratio": ad,
+            "bivariate_category": str(row.get("bivariate_category", "R3-M1")),
+        })
+
+    indicators = {}
+    for code in PROFILE_INDICATORS:
+        n_mean = float(gdf[code].mean()) if code in gdf.columns else 0.0
+        n_med = float(gdf[code].median()) if code in gdf.columns else 0.0
+        indicators[code] = {
+            "value": n_mean,
+            "national_mean": n_mean,
+            "national_median": n_med,
+            "corridor_median": n_med,
+            "is_negative": code in NEGATIVE_INDICATORS,
+        }
+
+    return {
+        "scope": "National",
+        "corridor": "National",
+        "total_units": total_units,
+        "provinces": provinces,
+        "total_provinces": len(provinces),
+        "total_regions": 7,
+        "risk_score": risk_score,
+        "mitigation_score": mitigation_score,
+        "gap_score": gap_score,
+        "readiness_balance": readiness_balance,
+        "adequacy_ratio": adequacy_ratio,
+        "critical_count": critical_count,
+        "critical_share_pct": critical_share_pct,
+        "top_bottlenecks": top_bottlenecks,
+        "indicators": indicators,
+    }
