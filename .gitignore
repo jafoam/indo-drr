@@ -1,0 +1,42 @@
+# Virtual environment
+.venv/
+venv/
+ENV/
+
+# Python cache
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.pytest_cache/
+.coverage
+htmlcov/
+
+# System / IDE
+.DS_Store
+.vscode/
+.idea/
+
+# App temporary / logs
+*.log
+.streamlit/
+
+# Large Datasets, Raw Data & Office/Binary Docs
+*.pdf
+*.xlsx
+*.xls
+*.docx
+*.doc
+*.sav
+*.zip
+*.tar.gz
+*.csv.gz
+Data/Output/
+drive-download-*/
+PODES/
+PODES_2024/
+Jurnal KTI/
+
+# Standalone plugins/repos
+headroom/
+ponytail/
