@@ -217,17 +217,44 @@ class DataManager:
         if self._gdf is not None:
             return
 
-        if not GEOJSON_FILE.exists():
-            raise FileNotFoundError(f"GeoJSON file not found at {GEOJSON_FILE}")
-        if not PARQUET_FILE.exists():
-            raise FileNotFoundError(f"Parquet dataset not found at {PARQUET_FILE}")
+        geojson_path = GEOJSON_FILE
+        parquet_path = PARQUET_FILE
+
+        if not geojson_path.exists():
+            candidates = [
+                Path(__file__).resolve().parent.parent.parent / "Data" / "processed" / "indonesia_regencies.geojson",
+                Path(__file__).resolve().parent.parent.parent / "data" / "processed" / "indonesia_regencies.geojson",
+                Path("Data/processed/indonesia_regencies.geojson").resolve(),
+                Path("data/processed/indonesia_regencies.geojson").resolve(),
+            ]
+            for cand in candidates:
+                if cand.exists():
+                    geojson_path = cand
+                    break
+
+        if not parquet_path.exists():
+            candidates = [
+                Path(__file__).resolve().parent.parent.parent / "Data" / "processed" / "podes_irbi_clean.parquet",
+                Path(__file__).resolve().parent.parent.parent / "data" / "processed" / "podes_irbi_clean.parquet",
+                Path("Data/processed/podes_irbi_clean.parquet").resolve(),
+                Path("data/processed/podes_irbi_clean.parquet").resolve(),
+            ]
+            for cand in candidates:
+                if cand.exists():
+                    parquet_path = cand
+                    break
+
+        if not geojson_path.exists():
+            raise FileNotFoundError(f"GeoJSON file not found at {geojson_path}")
+        if not parquet_path.exists():
+            raise FileNotFoundError(f"Parquet dataset not found at {parquet_path}")
 
         # Load GeoJSON geometry and base metadata
-        with open(GEOJSON_FILE, "r", encoding="utf-8") as f:
+        with open(geojson_path, "r", encoding="utf-8") as f:
             self._raw_geojson = json.load(f)
 
-        gdf = gpd.read_file(GEOJSON_FILE)
-        df = pd.read_parquet(PARQUET_FILE)
+        gdf = gpd.read_file(geojson_path)
+        df = pd.read_parquet(parquet_path)
 
         # Ensure matching key data types
         gdf["KODE_WIL"] = gdf["KODE_WIL"].astype(int)

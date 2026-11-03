@@ -2,14 +2,23 @@
 from pathlib import Path
 from typing import Dict, Any
 
-# Filesystem layout
+# Filesystem layout anchored to project root
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
-DATA_DIR = PROJECT_ROOT / "data"
-DATA_RAW_DIR = PROJECT_ROOT / "Data"  # Existing workspace raw data folder
+
+# Case-sensitive path resolution for Linux / Streamlit Cloud deployment:
+# The repository stores processed data under 'Data/processed'
+DATA_DIR = PROJECT_ROOT / "Data"
+if not DATA_DIR.exists() and (PROJECT_ROOT / "data").exists():
+    DATA_DIR = PROJECT_ROOT / "data"
+
+DATA_RAW_DIR = DATA_DIR
 DATA_PROCESSED_DIR = DATA_DIR / "processed"
+if not DATA_PROCESSED_DIR.exists() and (PROJECT_ROOT / "data" / "processed").exists():
+    DATA_PROCESSED_DIR = PROJECT_ROOT / "data" / "processed"
+
 DATA_PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 
-# Processed file paths
+# Processed file paths strictly matching repository casing
 GEOJSON_FILE = DATA_PROCESSED_DIR / "indonesia_regencies.geojson"
 PARQUET_FILE = DATA_PROCESSED_DIR / "podes_irbi_clean.parquet"
 
