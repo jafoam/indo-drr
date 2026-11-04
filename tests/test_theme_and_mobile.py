@@ -558,6 +558,28 @@ def test_native_theme_detection():
             assert get_active_theme_base() == "dark"
 
 
+def test_theme_sync_component():
+    """Verify theme detector custom component receives and normalizes light/dark from frontend."""
+    from unittest.mock import patch
+    import src.app.theme_detector as td
+
+    # Mock frontend reporting "light"
+    with patch.object(td, "_theme_sync_component", return_value="light"):
+        assert td.sync_native_theme(current_theme="dark") == "light"
+
+    # Mock frontend reporting "dark"
+    with patch.object(td, "_theme_sync_component", return_value="dark"):
+        assert td.sync_native_theme(current_theme="light") == "dark"
+
+    # Mock frontend not ready / returning None
+    with patch.object(td, "_theme_sync_component", return_value=None):
+        assert td.sync_native_theme(current_theme="dark") is None
+
+    # Mock frontend error / exception
+    with patch.object(td, "_theme_sync_component", side_effect=Exception("Render error")):
+        assert td.sync_native_theme(current_theme="dark") is None
+
+
 def test_no_lingering_circular_toggle_css():
     """Verify that custom circular button CSS overrides have been completely eliminated."""
     from src.app.app import get_antislop_css

@@ -1,0 +1,100 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<script>
+let lastTheme = null;
+
+function sendTheme(base) {
+    if (!base) return;
+    const normalized = base.toLowerCase();
+    if (normalized !== lastTheme) {
+        lastTheme = normalized;
+        window.parent.postMessage({
+            isStreamlitComponent: true,
+            type: "streamlit:setComponentValue",
+            value: normalized
+        }, "*");
+    }
+}
+
+function checkThemeFromParent() {
+    try {
+        if (!window.parent || !window.parent.document) return;
+        
+        // 1. Check Streamlit's localStorage
+        const stored = window.parent.localStorage.getItem("stActiveTheme");
+        if (stored) {
+            try {
+                const parsed = JSON.parse(stored);
+                if (parsed === "Light") { sendTheme("light"); return; }
+                if (parsed === "Dark") { sendTheme("dark"); return; }
+            } catch (_) {}
+        }
+        
+        // 2. Check computed background color of stApp or body
+        const appEl = window.parent.document.querySelector(".stApp") || window.parent.document.body;
+        if (appEl) {
+            const bg = window.parent.getComputedStyle(appEl).backgroundColor;
+            const match = bg.match(/rgba?\((\d+),\s*(\d+),\s*(\d+)/);
+            if (match) {
+                const r = parseInt(match[1], 10);
+                const g = parseInt(match[2], 10);
+                const b = parseInt(match[3], 10);
+                const lum = (0.299 * r + 0.587 * g + 0.114 * b) / 255;
+                sendTheme(lum > 0.5 ? "light" : "dark");
+            }
+        }
+    } catch (_) {}
+}
+
+// 1. Listen for Streamlit's native component render event
+window.addEventListener("message", function(event) {
+    if (!event.data) return;
+    if (event.data.type === "streamlit:render") {
+        const args = event.data.args || {};
+        const currentTheme = args.current_theme || null;
+        if (lastTheme === null && currentTheme) {
+            lastTheme = currentTheme.toLowerCase();
+        }
+        
+        const theme = event.data.theme;
+        if (theme && theme.base) {
+            sendTheme(theme.base);
+        } else {
+            checkThemeFromParent();
+        }
+    }
+});
+
+// 2. Immediate check on load & observe parent for mutations
+try {
+    checkThemeFromParent();
+    if (window.parent && window.parent.document) {
+        const target = window.parent.document.querySelector(".stApp") || window.parent.document.body;
+        if (target) {
+            const observer = new MutationObserver(() => {
+                checkThemeFromParent();
+            });
+            observer.observe(target, { attributes: true, attributeFilter: ["class", "style"] });
+        }
+    }
+} catch (_) {}
+
+// Notify Streamlit that component is ready
+window.parent.postMessage({
+    isStreamlitComponent: true,
+    type: "streamlit:componentReady",
+    apiVersion: 1
+}, "*");
+
+// Collapse frame height to 0
+window.parent.postMessage({
+    isStreamlitComponent: true,
+    type: "streamlit:setFrameHeight",
+    height: 0
+}, "*");
+</script>
+</head>
+<body style="margin: 0; padding: 0; overflow: hidden; background: transparent;"></body>
+</html>

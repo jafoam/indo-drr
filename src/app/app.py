@@ -431,6 +431,19 @@ def get_antislop_css(
             background-color: rgba(56, 189, 248, 0.25) !important;
             color: inherit !important;
         }}
+        /* Completely hide zero-height theme synchronization component */
+        iframe[title*="theme_sync"],
+        div[data-testid="stCustomComponentV1"]:has(iframe[title*="theme_sync"]),
+        div:has(> iframe[title*="theme_sync"]) {{
+            display: none !important;
+            height: 0 !important;
+            min-height: 0 !important;
+            max-height: 0 !important;
+            margin: 0 !important;
+            padding: 0 !important;
+            position: absolute !important;
+            visibility: hidden !important;
+        }}
         {theme_specific_css}
         /* Clean vertical clearance without excessive blank space (padding-top: 2rem minimum baseline preserved) */
         .block-container,
@@ -603,15 +616,13 @@ def main():
     # -----------------------------------------------------------------------
     # Native Theme Detection & State Synchronization
     # -----------------------------------------------------------------------
-    theme_base = get_active_theme_base()
+    from src.app.theme_detector import sync_native_theme
+
+    base_detected = get_active_theme_base()
+    live_theme = sync_native_theme(current_theme=base_detected)
+    theme_base = live_theme if live_theme in ("light", "dark") else base_detected
     is_bright = (theme_base == "light")
     st.session_state["theme"] = theme_base
-
-    # Force rerun once when theme changes to flush CSS — handles Streamlit's rerun race condition
-    _prev = st.session_state.get("_prev_theme_base")
-    st.session_state["_prev_theme_base"] = theme_base
-    if _prev is not None and _prev != theme_base:
-        st.rerun()
 
     theme_choice = "Light Theme" if is_bright else "Dark Theme"
     tokens = get_theme_tokens(theme_choice)
