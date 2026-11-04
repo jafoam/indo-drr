@@ -247,6 +247,53 @@ def get_antislop_css(
         .idr-subtitle {{
             color: #475569 !important;
         }}
+        /* Light mode: main content area background */
+        .stApp, .stApp > div, section.main, section.main > div {{
+            background-color: #f8fafc !important;
+            color: #0f172a !important;
+        }}
+        /* Light mode: radio group labels in main area */
+        div[data-testid="stRadio"] label p,
+        div[data-testid="stRadio"] label span,
+        div[data-testid="stRadio"] div[role="radiogroup"] label,
+        div[data-testid="stHorizontalBlock"] label,
+        div[data-testid="stHorizontalBlock"] p,
+        div[data-testid="stHorizontalBlock"] span {{
+            color: #0f172a !important;
+        }}
+        /* Light mode: segmented control in sidebar */
+        div[data-testid="stSegmentedControl"] button,
+        div[data-testid="stButtonGroup"] button {{
+            color: #0f172a !important;
+            background-color: #ffffff !important;
+        }}
+        div[data-testid="stSegmentedControl"] button[aria-pressed="true"],
+        div[data-testid="stButtonGroup"] button[aria-checked="true"] {{
+            background-color: #0f172a !important;
+            color: #f8fafc !important;
+        }}
+        /* Light mode: all text in main container */
+        div[data-testid="stMainBlockContainer"] p,
+        div[data-testid="stMainBlockContainer"] span,
+        div[data-testid="stMainBlockContainer"] label {{
+            color: #0f172a !important;
+        }}
+        /* Light mode: download buttons */
+        div[data-testid="stDownloadButton"] button {{
+            background-color: #ffffff !important;
+            color: #0f172a !important;
+            border: 1px solid #cbd5e1 !important;
+        }}
+        /* Light mode: slider labels and values */
+        div[data-testid="stSlider"] label p,
+        div[data-testid="stSlider"] span,
+        div[data-testid="stSlider"] div[data-testid="stThumbValue"] {{
+            color: #0f172a !important;
+        }}
+        /* Light mode: caption text */
+        div[data-testid="stCaptionContainer"] p {{
+            color: #64748b !important;
+        }}
         """
     else:
         theme_specific_css = f"""
@@ -676,7 +723,7 @@ def main():
     # -----------------------------------------------------------------------
     # Policy Intervention Sandbox (Sidebar)
     # -----------------------------------------------------------------------
-    with st.sidebar.expander(t("policy_sandbox", lang_code), expanded=True):
+    with st.sidebar.expander(t("policy_sandbox", lang_code), expanded=False):
         signal_reduction, gotong_royong_boost, is_sim_active = render_sandbox_controls(lang=lang_code)
 
     if is_sim_active:
@@ -750,16 +797,6 @@ def main():
             zoom = 7.0
 
     st.sidebar.markdown("---")
-    sidebar_meta = textwrap.dedent(f"""
-        <div style='font-family: monospace; font-size: 11px; color: {tokens["text-muted"]}; line-height: 1.6;'>
-            <div>{t("units_in_view", lang_code)}: <b style='color: {tokens["text-primary"]};'>{len(filtered_gdf)} {t("units_label", lang_code)}</b></div>
-            <div>{t("corridor_meta", lang_code)}: <b style='color: {tokens["accent-focus"]};'>{selected_corridor_display}</b></div>
-            <div>{t("topology_meta", lang_code)}: <b style='color: {tokens["text-primary"]};'>KNN (0 Islands)</b></div>
-            <div>CRS: <b style='color: {tokens["text-primary"]};'>EPSG:4326 (WGS84)</b></div>
-            <div>Engine: <b style='color: {tokens["text-primary"]};'>PySAL + FastAPI</b></div>
-        </div>
-    """).strip()
-    st.sidebar.markdown(sidebar_meta, unsafe_allow_html=True)
 
     is_specific_province = (
         selected_province != "All 38 Provinces"
@@ -824,6 +861,17 @@ def main():
             )
         except Exception as exc:
             st.sidebar.caption(f"Provincial brief notice: {exc}")
+
+    sidebar_meta = textwrap.dedent(f"""
+        <div style='font-family: monospace; font-size: 11px; color: {tokens["text-muted"]}; line-height: 1.6; margin-top: 8px;'>
+            <div>{t("units_in_view", lang_code)}: <b style='color: {tokens["text-primary"]};'>{len(filtered_gdf)} {t("units_label", lang_code)}</b></div>
+            <div>{t("corridor_meta", lang_code)}: <b style='color: {tokens["accent-focus"]};'>{selected_corridor_display}</b></div>
+            <div>{t("topology_meta", lang_code)}: <b style='color: {tokens["text-primary"]};'>KNN (0 Islands)</b></div>
+            <div>CRS: <b style='color: {tokens["text-primary"]};'>EPSG:4326 (WGS84)</b></div>
+            <div>Engine: <b style='color: {tokens["text-primary"]};'>PySAL + FastAPI</b></div>
+        </div>
+    """).strip()
+    st.sidebar.markdown(sidebar_meta, unsafe_allow_html=True)
 
     # -----------------------------------------------------------------------
     # Main Header
