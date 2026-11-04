@@ -526,45 +526,36 @@ def test_inspector_adequacy_kpi_card(loaded_data):
 
 
 def test_native_theme_detection():
-    """Verify native theme detection from st.context.theme.base, query params, and session state."""
+    """Verify native theme detection from st.context.theme.get("type") and query params."""
     from unittest.mock import patch, MagicMock
     import streamlit as st
     from src.app.app import get_active_theme_base
 
-    # 1. Native st.context.theme.base == "light"
+    # 1. Native st.context.theme.get("type") == "light"
     mock_theme_light = MagicMock()
-    mock_theme_light.base = "light"
+    mock_theme_light.get.return_value = "light"
     with patch.object(st.context.__class__, "theme", property(lambda self: mock_theme_light)):
         assert get_active_theme_base() == "light"
 
-    # 2. Native st.context.theme.base == "dark"
+    # 2. Native st.context.theme.get("type") == "dark"
     mock_theme_dark = MagicMock()
-    mock_theme_dark.base = "dark"
+    mock_theme_dark.get.return_value = "dark"
     with patch.object(st.context.__class__, "theme", property(lambda self: mock_theme_dark)):
         assert get_active_theme_base() == "dark"
 
-    # 3. Fallback to query params (?theme=light and ?theme=dark)
-    mock_theme_empty = MagicMock()
-    mock_theme_empty.base = None
-    mock_theme_empty.type = None
-    mock_theme_empty.get.return_value = None
-    with patch.object(st.context.__class__, "theme", property(lambda self: mock_theme_empty)):
+    # 3. Fallback to query params when theme context returns None
+    mock_theme_none = MagicMock()
+    mock_theme_none.get.return_value = None
+    with patch.object(st.context.__class__, "theme", property(lambda self: mock_theme_none)):
         with patch.object(st, "query_params", {"theme": "light"}):
             assert get_active_theme_base() == "light"
 
         with patch.object(st, "query_params", {"theme": "dark"}):
             assert get_active_theme_base() == "dark"
 
-    # 4. Fallback to session state
-    with patch.object(st.context.__class__, "theme", property(lambda self: mock_theme_empty)):
         with patch.object(st, "query_params", {}):
-            with patch.object(st, "session_state", {"theme": "light"}):
-                assert get_active_theme_base() == "light"
-            with patch.object(st, "session_state", {"theme": "dark"}):
-                assert get_active_theme_base() == "dark"
-            with patch.object(st, "session_state", {}):
-                # Default is dark
-                assert get_active_theme_base() == "dark"
+            # Default is dark when no context and no query param
+            assert get_active_theme_base() == "dark"
 
 
 def test_no_lingering_circular_toggle_css():

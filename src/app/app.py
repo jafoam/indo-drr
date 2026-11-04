@@ -422,7 +422,7 @@ def get_antislop_css(
         <style>
         /* Base typography & backgrounds */
         .stApp {{
-            background-color: {bg_primary};
+            /* background-color intentionally omitted — let Streamlit's native theme control it */
             color: {text_primary};
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
         }}
@@ -553,42 +553,24 @@ def get_antislop_css(
 
 
 def get_active_theme_base() -> str:
-    """Detect active theme base ('dark' or 'light').
+    """Detect active theme ('dark' or 'light') from Streamlit's native 3-dots menu.
 
-    1. Checks st.context.theme.base (from Streamlit's native 3-dots menu: System / Light / Dark)
-    2. Fallback: query parameter ?theme=dark or ?theme=light
-    3. Fallback: session state st.session_state.get('theme', 'dark')
+    Uses st.context.theme.get("type") which Streamlit populates after the
+    native theme selector triggers a rerun. Falls back to query param only.
     """
-    # 1. Native theme context (from 3-dots menu)
+    # 1. Native Streamlit theme context — the only reliable source in a live session
     try:
-        if hasattr(st, "context") and hasattr(st.context, "theme") and st.context.theme is not None:
-            ctx_theme = st.context.theme
-            base = getattr(ctx_theme, "base", None)
-            if not base and hasattr(ctx_theme, "type"):
-                base = getattr(ctx_theme, "type", None)
-            if not base and hasattr(ctx_theme, "get"):
-                base = ctx_theme.get("base") or ctx_theme.get("type")
-            if base in ("dark", "light"):
-                return base
+        theme_type = st.context.theme.get("type")
+        if theme_type in ("dark", "light"):
+            return theme_type
     except Exception:
         pass
 
-    # 2. Query parameter fallback (?theme=dark or ?theme=light)
+    # 2. Query parameter override (?theme=light or ?theme=dark)
     try:
-        if hasattr(st, "query_params"):
-            qp = st.query_params.get("theme", "").lower()
-            if qp in ("dark", "light"):
-                return qp
-    except Exception:
-        pass
-
-    # 3. Session state fallback
-    try:
-        sess = str(st.session_state.get("theme", "")).lower()
-        if sess in ("dark", "light"):
-            return sess
-        if "dark_mode" in st.session_state:
-            return "dark" if st.session_state["dark_mode"] else "light"
+        qp = st.query_params.get("theme", "").lower()
+        if qp in ("dark", "light"):
+            return qp
     except Exception:
         pass
 
@@ -624,7 +606,12 @@ def main():
     theme_base = get_active_theme_base()
     is_bright = (theme_base == "light")
     st.session_state["theme"] = theme_base
-    st.session_state["dark_mode"] = not is_bright
+
+    # Force rerun once when theme changes to flush CSS — handles Streamlit's rerun race condition
+    _prev = st.session_state.get("_prev_theme_base")
+    st.session_state["_prev_theme_base"] = theme_base
+    if _prev is not None and _prev != theme_base:
+        st.rerun()
 
     theme_choice = "Light Theme" if is_bright else "Dark Theme"
     tokens = get_theme_tokens(theme_choice)
