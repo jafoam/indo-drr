@@ -558,20 +558,25 @@ def test_native_theme_detection():
             assert get_active_theme_base() == "dark"
 
 
-def test_theme_watcher_injection():
-    """Verify inject_theme_watcher embeds the zero-height iframe without custom component chunk errors."""
-    from unittest.mock import patch
-    import streamlit.components.v1 as components
-    from src.app.app import inject_theme_watcher
+def test_theme_detection_fallback_and_default_dark():
+    """Verify theme detection prioritizes context, falls back to session state, and strictly defaults to dark."""
+    from unittest.mock import patch, MagicMock
+    import streamlit as st
+    from src.app.app import get_active_theme_base
 
-    with patch.object(components, "html") as mock_html:
-        inject_theme_watcher("light")
-        assert mock_html.called
-        args, kwargs = mock_html.call_args
-        assert "checkTheme" in args[0]
-        assert 'detected !== "light"' in args[0]
-        assert kwargs["height"] == 0
-        assert kwargs["width"] == 0
+    mock_theme_none = MagicMock()
+    mock_theme_none.get.return_value = None
+
+    with patch.object(st.context.__class__, "theme", property(lambda self: mock_theme_none)):
+        with patch.object(st, "query_params", {}):
+            # Fallback to session state if set
+            with patch.object(st, "session_state", {"theme": "light"}):
+                assert get_active_theme_base() == "light"
+            with patch.object(st, "session_state", {"theme": "dark"}):
+                assert get_active_theme_base() == "dark"
+            # Final fallback is ALWAYS dark
+            with patch.object(st, "session_state", {}):
+                assert get_active_theme_base() == "dark"
 
 
 def test_no_lingering_circular_toggle_css():
