@@ -431,10 +431,10 @@ def get_antislop_css(
             background-color: rgba(56, 189, 248, 0.25) !important;
             color: inherit !important;
         }}
-        /* Completely hide zero-height theme synchronization component */
-        iframe[title*="theme_sync"],
-        div[data-testid="stCustomComponentV1"]:has(iframe[title*="theme_sync"]),
-        div:has(> iframe[title*="theme_sync"]) {{
+        /* Completely hide zero-height theme synchronization watcher iframe */
+        iframe[srcdoc*="checkTheme"],
+        div[data-testid="stIFrame"]:has(iframe[srcdoc*="checkTheme"]),
+        div:has(> iframe[srcdoc*="checkTheme"]) {{
             display: none !important;
             height: 0 !important;
             min-height: 0 !important;
@@ -598,6 +598,70 @@ def apply_antislop_styling(
     st.markdown(get_antislop_css(theme_tokens, theme), unsafe_allow_html=True)
 
 
+def inject_theme_watcher(active_theme: str):
+    """Embed an invisible, zero-height iframe to monitor 3-dots native theme changes without custom component bundles."""
+    watcher_html = textwrap.dedent(f"""
+        <!DOCTYPE html>
+        <html>
+        <head>
+        <script>
+        (function() {{
+            function checkTheme() {{
+                try {{
+                    const p = window.parent;
+                    if (!p || !p.document) return;
+
+                    let detected = null;
+                    const stored = p.localStorage.getItem("stActiveTheme");
+                    if (stored) {{
+                        try {{
+                            const parsed = JSON.parse(stored);
+                            if (parsed === "Light") detected = "light";
+                            if (parsed === "Dark") detected = "dark";
+                        }} catch (_) {{}}
+                    }}
+
+                    if (!detected) {{
+                        const app = p.document.querySelector(".stApp") || p.document.body;
+                        if (app) {{
+                            const bg = p.getComputedStyle(app).backgroundColor;
+                            const m = bg.match(/rgba?\\((\\d+),\\s*(\\d+),\\s*(\\d+)/);
+                            if (m) {{
+                                const lum = (0.299 * m[1] + 0.587 * m[2] + 0.114 * m[3]) / 255;
+                                detected = lum > 0.5 ? "light" : "dark";
+                            }}
+                        }}
+                    }}
+
+                    if (detected && detected !== "{active_theme}") {{
+                        const url = new URL(p.location.href);
+                        url.searchParams.set("theme", detected);
+                        p.location.href = url.toString();
+                    }}
+                }} catch (_) {{}}
+            }}
+
+            checkTheme();
+
+            try {{
+                const target = window.parent.document.querySelector(".stApp") || window.parent.document.body;
+                if (target) {{
+                    new MutationObserver(checkTheme).observe(target, {{ attributes: true, attributeFilter: ["class", "style"] }});
+                }}
+            }} catch (_) {{}}
+        }})();
+        </script>
+        </head>
+        <body style="margin: 0; padding: 0; overflow: hidden; background: transparent;"></body>
+        </html>
+    """).strip()
+    try:
+        import streamlit.components.v1 as components
+        components.html(watcher_html, height=0, width=0)
+    except Exception:
+        pass
+
+
 def main():
     """Main Streamlit execution entrypoint."""
     st.set_page_config(
@@ -616,17 +680,14 @@ def main():
     # -----------------------------------------------------------------------
     # Native Theme Detection & State Synchronization
     # -----------------------------------------------------------------------
-    from src.app.theme_detector import sync_native_theme
-
-    base_detected = get_active_theme_base()
-    live_theme = sync_native_theme(current_theme=base_detected)
-    theme_base = live_theme if live_theme in ("light", "dark") else base_detected
+    theme_base = get_active_theme_base()
     is_bright = (theme_base == "light")
     st.session_state["theme"] = theme_base
 
     theme_choice = "Light Theme" if is_bright else "Dark Theme"
     tokens = get_theme_tokens(theme_choice)
     apply_antislop_styling(tokens, theme=theme_choice)
+    inject_theme_watcher(theme_base)
 
     # -----------------------------------------------------------------------
     # Clean Language Selector Placement (Top of Sidebar)
