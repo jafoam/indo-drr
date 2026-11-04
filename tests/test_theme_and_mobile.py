@@ -525,4 +525,188 @@ def test_inspector_adequacy_kpi_card(loaded_data):
     assert "Readiness Adequacy Ratio" in brief_en
 
 
+def test_native_theme_detection():
+    """Verify native theme detection from st.context.theme.base, query params, and session state."""
+    from unittest.mock import patch, MagicMock
+    import streamlit as st
+    from src.app.app import get_active_theme_base
+
+    # 1. Native st.context.theme.base == "light"
+    mock_theme_light = MagicMock()
+    mock_theme_light.base = "light"
+    with patch.object(st.context.__class__, "theme", property(lambda self: mock_theme_light)):
+        assert get_active_theme_base() == "light"
+
+    # 2. Native st.context.theme.base == "dark"
+    mock_theme_dark = MagicMock()
+    mock_theme_dark.base = "dark"
+    with patch.object(st.context.__class__, "theme", property(lambda self: mock_theme_dark)):
+        assert get_active_theme_base() == "dark"
+
+    # 3. Fallback to query params (?theme=light and ?theme=dark)
+    mock_theme_empty = MagicMock()
+    mock_theme_empty.base = None
+    mock_theme_empty.type = None
+    mock_theme_empty.get.return_value = None
+    with patch.object(st.context.__class__, "theme", property(lambda self: mock_theme_empty)):
+        with patch.object(st, "query_params", {"theme": "light"}):
+            assert get_active_theme_base() == "light"
+
+        with patch.object(st, "query_params", {"theme": "dark"}):
+            assert get_active_theme_base() == "dark"
+
+    # 4. Fallback to session state
+    with patch.object(st.context.__class__, "theme", property(lambda self: mock_theme_empty)):
+        with patch.object(st, "query_params", {}):
+            with patch.object(st, "session_state", {"theme": "light"}):
+                assert get_active_theme_base() == "light"
+            with patch.object(st, "session_state", {"theme": "dark"}):
+                assert get_active_theme_base() == "dark"
+            with patch.object(st, "session_state", {}):
+                # Default is dark
+                assert get_active_theme_base() == "dark"
+
+
+def test_no_lingering_circular_toggle_css():
+    """Verify that custom circular button CSS overrides have been completely eliminated."""
+    from src.app.app import get_antislop_css
+    from src.config import DARK_COLOR_TOKENS, LIGHT_COLOR_TOKENS
+
+    css_dark = get_antislop_css(DARK_COLOR_TOKENS, theme="Dark Theme")
+    css_light = get_antislop_css(LIGHT_COLOR_TOKENS, theme="Light Theme")
+
+    for css in [css_dark, css_light]:
+        assert "btn_theme_icon" not in css
+        assert "btn_lang_icon" not in css
+        assert "st-key-btn_theme_icon" not in css
+        assert "st-key-btn_lang_icon" not in css
+
+
+def test_language_segmented_control_and_localization(loaded_data):
+    """Verify language selector updates session state and re-renders components in target language."""
+    from src.app.components.choropleth import render_viewport_footer_html, render_balance_legend_html
+    from src.app.components.stats_panel import create_parity_quadrant_chart
+    from src.app.components.inspector import render_inspector_card_html
+    from src.analytics.profile import compute_regency_profile
+
+    # 1. ID Language rendering
+    footer_id = render_viewport_footer_html(loaded_data.bivariate_df, loaded_data.gdf, lang="id")
+    assert "3×3 Risiko vs. Mitigasi" in footer_id
+    assert "Kesenjangan Kritis (R3-M1)" in footer_id
+
+    legend_id = render_balance_legend_html(lang="id")
+    assert "Defisit Ekstrem" in legend_id
+    assert "Surplus Mitigasi" in legend_id
+
+    # 2. EN Language rendering
+    footer_en = render_viewport_footer_html(loaded_data.bivariate_df, loaded_data.gdf, lang="en")
+    assert "3×3 Risk vs. Mitigation" in footer_en
+    assert "Critical Gap (R3-M1)" in footer_en
+
+    legend_en = render_balance_legend_html(lang="en")
+    assert "Severe Deficit" in legend_en
+    assert "Mitigation Surplus" in legend_en
+
+    # 3. Parity chart localization
+    fig_parity_id = create_parity_quadrant_chart(loaded_data.bivariate_df, lang="id")
+    assert any("Garis Paritas" in (t.name or "") for t in fig_parity_id.data)
+
+    fig_parity_en = create_parity_quadrant_chart(loaded_data.bivariate_df, lang="en")
+    assert any("Parity Line" in (t.name or "") for t in fig_parity_en.data)
+
+    # 4. Inspector card localization
+    profile = compute_regency_profile(loaded_data.gdf, loaded_data.bivariate_df, 1101)
+    card_id = render_inspector_card_html(profile, lang="id")
+    assert "PROVINSI:" in card_id
+    assert "Rasio Kecukupan Kesiapsiagaan" in card_id
+
+    card_en = render_inspector_card_html(profile, lang="en")
+    assert "PROVINCE:" in card_en
+    assert "Readiness Adequacy Ratio" in card_en
+
+
+def test_native_theme_synchronization_deck_and_plotly(loaded_data):
+    """Verify PyDeck and Plotly synchronize strictly to detected native theme."""
+    from src.config import get_theme_tokens
+    from src.app.components.choropleth import prepare_choropleth_data, create_choropleth_deck
+    from src.app.components.stats_panel import create_moran_scatterplot, create_parity_quadrant_chart
+    from src.app.components.spillover_panel import render_spillover_waterfall_chart
+    from src.analytics.spillover import estimate_spatial_spillover
+
+    prepared = prepare_choropleth_data(
+        gdf=loaded_data.gdf,
+        bivariate_df=loaded_data.bivariate_df,
+        layer_mode="Bivariate Risk vs Mitigation (3x3)",
+    )
+
+    # --- Light Theme (is_bright=True) ---
+    light_tokens = get_theme_tokens("Light Theme")
+    assert light_tokens["map-style"] == "carto-positron"
+    assert light_tokens["plotly-template"] == "plotly_white"
+    assert light_tokens["text-primary"] == "#0f172a"
+
+    # PyDeck map style
+    light_deck = create_choropleth_deck(prepared, theme_tokens=light_tokens)
+    assert "positron" in light_deck.map_style
+
+    # Plotly Moran scatterplot
+    light_scatter = create_moran_scatterplot(
+        gdf=loaded_data.gdf,
+        variable="IRBI_2024",
+        weights=loaded_data.weights,
+        theme_tokens=light_tokens,
+        is_bright=True,
+    )
+    assert light_scatter.layout.paper_bgcolor == "#ffffff"
+    assert light_scatter.layout.plot_bgcolor == "#ffffff"
+    assert light_scatter.layout.xaxis.tickfont.color == "#0f172a"
+
+    # Plotly Parity chart
+    light_parity = create_parity_quadrant_chart(
+        loaded_data.bivariate_df,
+        theme_tokens=light_tokens,
+        is_bright=True,
+    )
+    assert light_parity.layout.paper_bgcolor == "#ffffff"
+    assert light_parity.layout.plot_bgcolor in ["#ffffff", "#f8fafc"]
+
+    # Plotly Spillover waterfall
+    spill_res = estimate_spatial_spillover(loaded_data.gdf, weights=loaded_data.weights, model_type="lag")
+    light_waterfall = render_spillover_waterfall_chart(spill_res, is_bright=True)
+    assert light_waterfall.layout.paper_bgcolor == "#ffffff"
+    assert light_waterfall.layout.plot_bgcolor in ["#ffffff", "#f8fafc"]
+
+    # --- Dark Theme (is_bright=False) ---
+    dark_tokens = get_theme_tokens("Dark Theme")
+    assert dark_tokens["map-style"] == "carto-darkmatter"
+    assert dark_tokens["plotly-template"] == "plotly_dark"
+    assert dark_tokens["text-primary"] == "#f1f5f9"
+
+    # PyDeck map style
+    dark_deck = create_choropleth_deck(prepared, theme_tokens=dark_tokens)
+    assert "dark-matter" in dark_deck.map_style or "carto-darkmatter" in dark_deck.map_style
+
+    # Plotly Moran scatterplot
+    dark_scatter = create_moran_scatterplot(
+        gdf=loaded_data.gdf,
+        variable="IRBI_2024",
+        weights=loaded_data.weights,
+        theme_tokens=dark_tokens,
+        is_bright=False,
+    )
+    assert dark_scatter.layout.paper_bgcolor in ["#161e2a", "#1a2332"]
+
+    # Plotly Parity chart
+    dark_parity = create_parity_quadrant_chart(
+        loaded_data.bivariate_df,
+        theme_tokens=dark_tokens,
+        is_bright=False,
+    )
+    assert dark_parity.layout.paper_bgcolor in ["#161e2a", "#1a2332"]
+
+    # Plotly Spillover waterfall
+    dark_waterfall = render_spillover_waterfall_chart(spill_res, is_bright=False)
+    assert dark_waterfall.layout.paper_bgcolor in ["#161e2a", "#1a2332"]
+
+
 

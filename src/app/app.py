@@ -424,45 +424,11 @@ def get_antislop_css(
             object-fit: contain;
             box-sizing: border-box;
         }}
-        /* Sleek circular push-buttons for Theme & Language */
-        div.st-key-btn_theme_icon,
-        div.st-key-btn_lang_icon {{
-            display: flex !important;
-            justify-content: center !important;
-        }}
-        div.st-key-btn_theme_icon > button,
-        div.st-key-btn_lang_icon > button,
-        button[key="btn_theme_icon"],
-        button[key="btn_lang_icon"] {{
-            width: 42px !important;
-            height: 42px !important;
-            min-width: 42px !important;
-            min-height: 42px !important;
-            max-width: 42px !important;
-            max-height: 42px !important;
-            border-radius: 50% !important;
-            padding: 0 !important;
-            margin: 0 auto !important;
-            display: flex !important;
-            align-items: center !important;
-            justify-content: center !important;
-            font-size: 1.2rem !important;
-            line-height: 1 !important;
-            border: 1px solid {border_subtle} !important;
-            background-color: {bg_surface} !important;
-            color: {text_primary} !important;
-            transition: background-color 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
-            box-shadow: none !important;
-        }}
-        div.st-key-btn_theme_icon > button:hover,
-        div.st-key-btn_lang_icon > button:hover {{
-            background-color: {tokens.get('bg-surface-elevated', bg_surface)} !important;
-            border-color: {tokens.get('accent-focus', border_subtle)} !important;
-            transform: scale(1.05);
-        }}
-        div.st-key-btn_theme_icon > button:active,
-        div.st-key-btn_lang_icon > button:active {{
-            transform: scale(0.95);
+        /* Top-of-sidebar language segmented control clean styling */
+        div[data-testid="stSegmentedControl"],
+        div[data-testid="stButtonGroup"] {{
+            width: 100% !important;
+            margin-bottom: 6px !important;
         }}
         /* Header bar in normal document flow with clean vertical clearance */
         .idr-header {{
@@ -539,6 +505,49 @@ def get_antislop_css(
     """).strip()
 
 
+def get_active_theme_base() -> str:
+    """Detect active theme base ('dark' or 'light').
+
+    1. Checks st.context.theme.base (from Streamlit's native 3-dots menu: System / Light / Dark)
+    2. Fallback: query parameter ?theme=dark or ?theme=light
+    3. Fallback: session state st.session_state.get('theme', 'dark')
+    """
+    # 1. Native theme context (from 3-dots menu)
+    try:
+        if hasattr(st, "context") and hasattr(st.context, "theme") and st.context.theme is not None:
+            ctx_theme = st.context.theme
+            base = getattr(ctx_theme, "base", None)
+            if not base and hasattr(ctx_theme, "type"):
+                base = getattr(ctx_theme, "type", None)
+            if not base and hasattr(ctx_theme, "get"):
+                base = ctx_theme.get("base") or ctx_theme.get("type")
+            if base in ("dark", "light"):
+                return base
+    except Exception:
+        pass
+
+    # 2. Query parameter fallback (?theme=dark or ?theme=light)
+    try:
+        if hasattr(st, "query_params"):
+            qp = st.query_params.get("theme", "").lower()
+            if qp in ("dark", "light"):
+                return qp
+    except Exception:
+        pass
+
+    # 3. Session state fallback
+    try:
+        sess = str(st.session_state.get("theme", "")).lower()
+        if sess in ("dark", "light"):
+            return sess
+        if "dark_mode" in st.session_state:
+            return "dark" if st.session_state["dark_mode"] else "light"
+    except Exception:
+        pass
+
+    return "dark"
+
+
 def apply_antislop_styling(
     theme_tokens: Optional[Dict[str, str]] = None,
     theme: Optional[str] = None,
@@ -563,41 +572,62 @@ def main():
     weights = dm.weights
 
     # -----------------------------------------------------------------------
-    # Sidebar Minimalist Push-Buttons (Theme & Language)
+    # Native Theme Detection & State Synchronization
     # -----------------------------------------------------------------------
-    if "dark_mode" not in st.session_state:
-        st.session_state["dark_mode"] = True
-    if "app_lang" not in st.session_state:
-        st.session_state["app_lang"] = "id"
+    theme_base = get_active_theme_base()
+    is_bright = (theme_base == "light")
+    st.session_state["theme"] = theme_base
+    st.session_state["dark_mode"] = not is_bright
 
-    col_theme, col_lang = st.sidebar.columns([1, 1])
-    with col_theme:
-        theme_icon = "🌙" if st.session_state["dark_mode"] else "☀️"
-        if st.button(theme_icon, key="btn_theme_icon", use_container_width=False):
-            st.session_state["dark_mode"] = not st.session_state["dark_mode"]
-            st.rerun()
-
-    with col_lang:
-        lang_icon = "🇮🇩" if st.session_state["app_lang"] == "id" else "🇬🇧"
-        if st.button(lang_icon, key="btn_lang_icon", use_container_width=False):
-            st.session_state["app_lang"] = "en" if st.session_state["app_lang"] == "id" else "id"
-            st.rerun()
-
-    dark_mode = st.session_state["dark_mode"]
-    lang_code = st.session_state["app_lang"]
-
-    theme_choice = "Dark Theme" if dark_mode else "Light Theme"
-    is_bright = not dark_mode
+    theme_choice = "Light Theme" if is_bright else "Dark Theme"
     tokens = get_theme_tokens(theme_choice)
     apply_antislop_styling(tokens, theme=theme_choice)
 
-    sidebar_brand = textwrap.dedent(f"""
-        <div style='padding-bottom: 8px; margin-bottom: 12px; border-bottom: 1px solid {tokens["border-subtle"]};'>
-            <div style='font-size: 15px; font-weight: 700; color: {tokens["text-primary"]};'>IDR-GE</div>
-            <div style='font-size: 10px; color: {tokens["text-muted"]}; font-family: monospace;'>{t("sidebar_brand_sub", lang_code)}</div>
-        </div>
-    """).strip()
-    st.sidebar.markdown(sidebar_brand, unsafe_allow_html=True)
+    # -----------------------------------------------------------------------
+    # Clean Language Selector Placement (Top of Sidebar)
+    # -----------------------------------------------------------------------
+    if "lang" not in st.session_state:
+        qp_lang = st.query_params.get("lang", "").lower() if hasattr(st, "query_params") else ""
+        if qp_lang in ("id", "en"):
+            st.session_state["lang"] = qp_lang
+        else:
+            st.session_state["lang"] = st.session_state.get("app_lang", "id")
+
+    with st.sidebar:
+        if hasattr(st, "segmented_control"):
+            lang_choice = st.segmented_control(
+                label="Language / Bahasa",
+                options=["ID", "EN"],
+                default=st.session_state.get("lang", "id").upper(),
+                format_func=lambda opt: f"🇮🇩 {opt}" if opt == "ID" else f"🇬🇧 {opt}",
+                label_visibility="collapsed",
+                key="app_lang_selector",
+            )
+        else:
+            lang_choice = st.radio(
+                label="Language / Bahasa",
+                options=["ID", "EN"],
+                index=0 if st.session_state.get("lang", "id").lower() == "id" else 1,
+                format_func=lambda opt: f"🇮🇩 {opt}" if opt == "ID" else f"🇬🇧 {opt}",
+                horizontal=True,
+                label_visibility="collapsed",
+                key="app_lang_selector",
+            )
+
+        if not lang_choice:
+            lang_choice = st.session_state.get("lang", "id").upper()
+
+        st.session_state["lang"] = lang_choice.lower()
+        st.session_state["app_lang"] = st.session_state["lang"]
+        lang_code = st.session_state["lang"]
+
+        sidebar_brand = textwrap.dedent(f"""
+            <div style='padding-bottom: 8px; margin-bottom: 12px; border-bottom: 1px solid {tokens["border-subtle"]};'>
+                <div style='font-size: 15px; font-weight: 700; color: {tokens["text-primary"]};'>IDR-GE</div>
+                <div style='font-size: 10px; color: {tokens["text-muted"]}; font-family: monospace;'>{t("sidebar_brand_sub", lang_code)}</div>
+            </div>
+        """).strip()
+        st.markdown(sidebar_brand, unsafe_allow_html=True)
 
     layer_biv_label = t("layer_bivariate", lang_code)
     layer_balance_label = t("layer_balance", lang_code)
